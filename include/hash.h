@@ -1,5 +1,6 @@
 /*
 Copyright (c) 2003-2014, Troy D. Hanson     http://troydhanson.github.com/uthash/
+Copyright (c) 2014, Vsevolod Stakhov <vsevolod@highsecure.ru>
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -73,8 +74,6 @@ typedef unsigned char uint8_t;
 #include <stdint.h>
 #endif
 
-#define UTHASH_VERSION 1.9.9
-
 #ifndef uthash_fatal
 #define uthash_fatal(msg) exit(-1)        /* fatal error (out of memory,etc) */
 #endif
@@ -96,6 +95,73 @@ typedef unsigned char uint8_t;
 #define HASH_INITIAL_NUM_BUCKETS 32      /* initial number of buckets        */
 #define HASH_INITIAL_NUM_BUCKETS_LOG2 5  /* lg2 of initial number of buckets */
 #define HASH_BKT_CAPACITY_THRESH 10      /* expand when bucket count reaches */
+
+/* random signature used only to find hash tables in external analysis */
+#define HASH_SIGNATURE 0xa0111fe1
+#define HASH_BLOOM_SIGNATURE 0xb12220f2
+#define HASH_TYPE uint32_t
+/*
+ * Operations structure, defines all common functions aplicable to a hash table
+ */
+#define HASH_OPS(type)                                                         \
+struct  {                                                                      \
+  int (*hash_cmp)(const struct type *a, const struct type *b, void *d);        \
+  void *cmpd;                                                                  \
+  HASH_TYPE (*hash_func)(const struct type *a, void *d);                       \
+  void *hashd;                                                                 \
+  void * (*lock_init)(void *d);                                                \
+  void (*lock_read_lock)(void *l, void *d);                                    \
+  void (*lock_read_unlock)(void *l, void *d);                                  \
+  void (*lock_write_lock)(void *l, void *d);                                   \
+  void (*lock_write_unlock)(void *l, void *d);                                 \
+  void (*lock_destroy)(void *l, void *d);                                      \
+  void *lockd;                                                                 \
+  void *(*bloom_init)(void *d);                                                \
+  void (*bloom_add((void *b, HASH_TYPE h);                                     \
+  void (*bloom_test)(void *b, HASH_TYPE h);                                    \
+  void (*bloom_destroy)(void *b, void *d)                                      \
+  void *bloomd;                                                                \
+}
+
+/*
+ * Hash entry. Overhead: 1 pointer
+ */
+#define HASH_ENTRY(type)                                                       \
+struct {                                                                       \
+  struct type *next;                                                           \
+}
+
+/*
+ * Hash node entry: one per bucket, overhead: 2 pointers + 1 size_t
+ */
+#define HASH_NODE(type)                                                        \
+struct {                                                                       \
+  struct type *first;                                                          \
+  void *lock;                                                                  \
+  size_t entries;                                                              \
+}
+
+/*
+ * Hash table itself. Overhead is negligible as it is one per hash table
+ */
+#define HASH_HEAD(name, type)                                                  \
+  struct name {                                                                \
+   HASH_NODE(type) *buckets;                                                   \
+   HASH_OPS(type) ops;                                                         \
+   unsigned num_buckets, log2_num_buckets;                                     \
+   unsigned num_items;                                                         \
+   struct UT_hash_handle *tail; /* tail hh in app order, for fast append    */ \
+   ptrdiff_t hho; /* hash handle offset (byte pos of hash handle in element */ \
+                                                                               \
+   unsigned ideal_chain_maxlen;                                                \
+   unsigned nonideal_items;                                                    \
+   unsigned ineff_expands, noexpand;                                           \
+   uint32_t signature; /* used only to find hash tables in external analysis */\
+   uint8_t *bloom_bv;                                                          \
+   char bloom_nbits;                                                           \
+   void *resize_lock;                                                          \
+  }
+
 
 /* calculate the element whose hash handle address is hhe */
 #define ELMT_FROM_HH(tbl,hhp) ((void*)(((char*)(hhp)) - ((tbl)->hho)))
@@ -906,53 +972,5 @@ typedef struct UT_hash_bucket {
    unsigned expand_mult;
 
 } UT_hash_bucket;
-
-/* random signature used only to find hash tables in external analysis */
-#define HASH_SIGNATURE 0xa0111fe1
-#define HASH_BLOOM_SIGNATURE 0xb12220f2
-
-typedef struct UT_hash_table {
-   UT_hash_bucket *buckets;
-   unsigned num_buckets, log2_num_buckets;
-   unsigned num_items;
-   struct UT_hash_handle *tail; /* tail hh in app order, for fast append    */
-   ptrdiff_t hho; /* hash handle offset (byte pos of hash handle in element */
-
-   /* in an ideal situation (all buckets used equally), no bucket would have
-    * more than ceil(#items/#buckets) items. that's the ideal chain length. */
-   unsigned ideal_chain_maxlen;
-
-   /* nonideal_items is the number of items in the hash whose chain position
-    * exceeds the ideal chain maxlen. these items pay the penalty for an uneven
-    * hash distribution; reaching them in a chain traversal takes >ideal steps */
-   unsigned nonideal_items;
-
-   /* ineffective expands occur when a bucket doubling was performed, but
-    * afterward, more than half the items in the hash had nonideal chain
-    * positions. If this happens on two consecutive expansions we inhibit any
-    * further expansion, as it's not helping; this happens when the hash
-    * function isn't a good fit for the key domain. When expansion is inhibited
-    * the hash will still work, albeit no longer in constant time. */
-   unsigned ineff_expands, noexpand;
-
-   uint32_t signature; /* used only to find hash tables in external analysis */
-#ifdef HASH_BLOOM
-   uint32_t bloom_sig; /* used only to test bloom exists in external analysis */
-   uint8_t *bloom_bv;
-   char bloom_nbits;
-#endif
-
-} UT_hash_table;
-
-typedef struct UT_hash_handle {
-   struct UT_hash_table *tbl;
-   void *prev;                       /* prev element in app order      */
-   void *next;                       /* next element in app order      */
-   struct UT_hash_handle *hh_prev;   /* previous hh in bucket order    */
-   struct UT_hash_handle *hh_next;   /* next hh in bucket order        */
-   void *key;                        /* ptr to enclosing struct's key  */
-   unsigned keylen;                  /* enclosing struct's key len     */
-   unsigned hashv;                   /* result of hash-fcn(key)        */
-} UT_hash_handle;
 
 #endif /* UTHASH_H */
