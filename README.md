@@ -24,14 +24,36 @@ struct node {
 }
 struct top {
 	...
-	HASH_HEAD(, node) *head;
+	HASH_HEAD(, node) head;
 }
 ~~~
 
 Then you need to generate operations functions for your defined type. In a trivial case you should just write something like this:
 
 ~~~c
-HASH_DEFINE(node, hh);
+/* 
+ * This generates a static global variable named _hash_ops_node_hh {...}
+ * and a set of auxiliary functions named _hash_op_node_hh_hash and
+ * _hash_op_node_hh_cmp
+ */
+HASH_GENERATE_STR(node, hh);
+...
+/* Somewhere in the code */
+void init(struct top *top) 
+{
+	struct node *new, *found, search;
+	HASH_INIT(&top->head, node, hh);
+	...
+	/* Add elements */
+	HASH_ADD(&head, node, hh, new);
+	
+	/* Search for an element */
+	search.key = "test";
+	found = HASH_FIND(&top->head, node, hh, &search);
+	
+	/* Or even simpler */
+	found = HASH_FIND_STR(&top->head, node, hh, "test");
+}
 ~~~
 
 This defines all standard methods (with no locking, no blooming and using `strcmp` as the compare routine). You can also define more complex
