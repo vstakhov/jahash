@@ -277,6 +277,8 @@ struct {                                                                       \
   (head)->signature = HASH_SIGNATURE;                                         \
 } while(0)
 
+#define HASH_ROUNDUP32(x)                                                     \
+  (--(x), (x)|=(x)>>1, (x)|=(x)>>2, (x)|=(x)>>4, (x)|=(x)>>8, (x)|=(x)>>16, ++(x))
 
 #define HASH_EXPAND_BUCKETS(head, type, field)                                \
 do {                                                                           \
@@ -284,7 +286,8 @@ do {                                                                           \
   HASH_LOCK_WRITE(head);                                                       \
   if ((head)->generation == _saved_generation) {                               \
 	  HASH_NODE(type, field) *_new_nodes, *bkt;                                  \
-	  size_t _new_num = (head)->num_buckets * 2;                                 \
+	  unsigned _new_num = (head)->num_buckets + 1;                              \
+	  HASH_ROUNDUP32(_new_num);                                                 \
 	  HASH_ALLOC_NODES((head), _new_nodes, _new_num);                            \
 	  if (_new_nodes != NULL) {                                                 \
 		(head)->ideal_chain_maxlen =                                               \
