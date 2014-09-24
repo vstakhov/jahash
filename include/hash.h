@@ -306,6 +306,71 @@ do {                                                                           \
 #define HASH_FIND_BKT(nodes, size, hv)                                        \
   ((nodes)[(hv) & ((size) - 1)])
 
+/*
+ * Generators part
+ */
+/*
+ * String generator needs NULL terminated string in a key field
+ * Filter func is used to filter hashed or compared keys to allow, for instance
+ * case insensitive hash.
+ */
+typedef struct _hash_string_data_s {
+  unsigned char (*filter_func)(unsigned char in, void *d);
+  void *d;
+} hash_string_data_t;
+
+#define HASH_GENERATE_STR(type, field, keyfield)                              \
+  static HASH_TYPE _str_hash_op_##type##_##field##_hash(struct type *e, void *d) \
+  {                                                                            \
+    hash_string_data_t *dt = (hash_string_data_t *)d;                          \
+    const unsigned char *key = (const unsigned char *)e->(keyfield);       \
+    HASH_TYPE hash, i;                                                         \
+    for(hash = i = 0; key[i] != 0; ++i) {                                      \
+        if (dt) hash += dt->filter_func(key[i], dt->d);                        \
+        else hash += key[i];                                                   \
+        hash += (hash << 10);                                                  \
+        hash ^= (hash >> 6);                                                   \
+    }                                                                          \
+    hash += (hash << 3);                                                       \
+    hash ^= (hash >> 11);                                                      \
+    hash += (hash << 15);                                                      \
+    return hash;                                                              \
+  }                                                                            \
+  static int _str_hash_op_##type##_##field##_cmp(struct type *e1, struct type *e2, void *d) \
+  {                                                                            \
+    hash_string_data_t *dt = (hash_string_data_t *)d;                          \
+    const unsigned char *k1 = (const unsigned char *)e1->(keyfield),       \
+      *k2 = (const unsigned char *)e2->(keyfield);                           \
+    if (d == NULL) return strcmp(k1, k2);                                     \
+    else {                                                                    \
+      while (*k1) {                                                           \
+        if (*k2 == 0) return 1;                                               \
+        unsigned char t1 = dt->filter_func(k1, dt->d),                        \
+          t2 = dt->filter_func(k2, dt->d);                                     \
+        if (t1 != t2) return t1 - t2;                                         \
+        ++k1; ++k2;                                                            \
+      }                                                                        \
+      if (*k2 != 0) return -1;                                                \
+    }                                                                          \
+    return 0;                                                                 \
+  }                                                                            \
+  static struct type* _str_hash_op_##type##_##field##_find(void *head, const char *k) \
+  {                                                                            \
+    struct type s, *p;                                                        \
+    HASH_HEAD(, (type)) *h;                                                    \
+    DECLTYPE_ASSIGN(s.(keyfield), k);                                          \
+    DECLTYPE_ASSIGN(h, head);                                                  \
+    HASH_FIND(h, (type), (field), &s, p);                                      \
+    return p;                                                                 \
+  }                                                                            \
+  static HASH_OPS(type) _hash_ops_##type##_##field {                         \
+    .hash_cmp = &_str_hash_op_##type##_##field##_cmp;                         \
+    .hash_func = &_str_hash_op_##type##_##field##_hash;                       \
+  }
+
+#define HASH_FIND_STR(head, type, field, key)                                 \
+  (_str_hash_op_##type##_##field##_find((head), (const char *)(key)))
+
 #ifdef HASH_BLOOM
 #define HASH_BLOOM_BITLEN (1ULL << HASH_BLOOM)
 #define HASH_BLOOM_BYTELEN (HASH_BLOOM_BITLEN/8) + ((HASH_BLOOM_BITLEN%8) ? 1:0)
