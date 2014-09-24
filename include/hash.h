@@ -86,11 +86,11 @@ typedef unsigned char uint8_t;
 /*
  * Operations structure, defines all common functions aplicable to a hash table
  */
-#define HASH_OPS(type)                                                         \
-struct  {                                                                      \
-  int (*hash_cmp)(const struct type *a, const struct type *b, void *d);        \
+#define HASH_OPS(type, field)                                                 \
+struct  _hash_ops_##type##_##field {                                         \
+  int (*hash_cmp)(const struct type *a, const struct type *b, void *d);    \
   void *cmpd;                                                                  \
-  HASH_TYPE (*hash_func)(const struct type *a, void *d);                       \
+  HASH_TYPE (*hash_func)(const struct type *a, void *d);                     \
   void *hashd;                                                                 \
   void * (*lock_init)(void *d);                                                \
   void (*lock_read_lock)(void *l, void *d);                                    \
@@ -100,9 +100,9 @@ struct  {                                                                      \
   void (*lock_destroy)(void *l, void *d);                                      \
   void *lockd;                                                                 \
   void *(*bloom_init)(void *d);                                                \
-  void (*bloom_add((void *b, HASH_TYPE h);                                     \
+  void (*bloom_add)(void *b, HASH_TYPE h);                                     \
   void (*bloom_test)(void *b, HASH_TYPE h);                                    \
-  void (*bloom_destroy)(void *b, void *d)                                      \
+  void (*bloom_destroy)(void *b, void *d);                                    \
   void *bloomd;                                                                \
   void *(*alloc)(size_t len, void *d);                                         \
   void (*free)(size_t len, void *p, void *d);                                 \
@@ -121,20 +121,16 @@ struct {                                                                       \
 /*
  * Hash node entry: one per bucket, overhead: 2 pointers + 1 size_t
  */
-#define HASH_NODE(type)                                                        \
-struct {                                                                       \
-  struct type *first;                                                          \
-  void *lock;                                                                  \
-  size_t entries;                                                              \
-}
+#define HASH_NODE(type, field)                                                \
+    struct _hash_node_##type##_##field
 
 /*
  * Hash table itself. Overhead is negligible as it is one per hash table
  */
-#define HASH_HEAD(name, type)                                                  \
+#define HASH_HEAD(name, type, field)                                           \
   struct name {                                                                \
-   HASH_NODE(type) *buckets;                                                    \
-   HASH_OPS(type) ops;                                                          \
+   HASH_NODE(type, field) *buckets;                                             \
+   struct _hash_ops_##type##_##field *ops;                                   \
    unsigned num_buckets;                                                       \
    unsigned num_items;                                                         \
    unsigned need_expand;                                                       \
@@ -149,9 +145,9 @@ struct {                                                                       \
  * Prior to using of this macro, one should define ops structure with
  * HASH_GENERATE_*(type, field);
  */
-#define HASH_INIT(head, type, field) do {                                    \
+#define HASH_INIT(head, type, field) do {                                     \
   memset((head), 0, sizeof((*head)));                                         \
-  memcpy(&(head)->ops, &_hash_ops_##type##_##field, sizeof((head)->ops));    \
+  (head)->ops = &_hash_ops_##type##_##field_glob;                             \
 } while(0);
 
 #define HASH_INIT_OPS(head, ops) do {                                         \
@@ -162,77 +158,77 @@ struct {                                                                       \
 /* Locking methods */
 #define HASH_LOCK_READ(head) do {                                             \
    if ((head)->resize_lock) {                                                    \
-     (head)->ops.lock_read_lock((head)->resize_lock, (head)->ops.lockd);             \
+     (head)->ops->lock_read_lock((head)->resize_lock, (head)->ops->lockd);             \
    }                                                                           \
 } while(0)
 #define HASH_LOCK_WRITE(head) do {                                            \
    if ((head)->resize_lock) {                                                    \
-     (head)->ops.lock_write_lock((head)->resize_lock, (head)->ops.lockd);            \
+     (head)->ops->lock_write_lock((head)->resize_lock, (head)->ops->lockd);            \
    }                                                                           \
 } while(0)
 #define HASH_UNLOCK_READ(head) do {                                           \
    if ((head)->resize_lock) {                                                    \
-     (head)->ops.lock_read_unlock((head)->resize_lock, (head)->ops.lockd);           \
+     (head)->ops->lock_read_unlock((head)->resize_lock, (head)->ops->lockd);           \
    }                                                                           \
 } while(0)
 #define HASH_UNLOCK_WRITE(head) do {                                          \
    if ((head)->resize_lock) {                                                    \
-     (head)->ops.lock_write_unlock((head)->resize_lock, (head)->ops.lockd);          \
+     (head)->ops->lock_write_unlock((head)->resize_lock, (head)->ops->lockd);          \
    }                                                                           \
 } while(0)
 #define HASH_LOCK_NODE_READ(head, node) do {                                  \
    if ((node)->lock) {                                                           \
-     (head)->ops.lock_read_lock((node)->lock, (head)->ops.lockd);                    \
+     (head)->ops->lock_read_lock((node)->lock, (head)->ops->lockd);                    \
    }                                                                           \
 } while(0)
-#define HASH_LOCK_NODE_WRITE(head) do {                                       \
+#define HASH_LOCK_NODE_WRITE(head, node) do {                                       \
    if ((node)->lock) {                                                           \
-     (head)->ops.lock_write_lock((node)->lock, (head)->ops.lockd);                   \
+     (head)->ops->lock_write_lock((node)->lock, (head)->ops->lockd);                   \
    }                                                                           \
 } while(0)
-#define HASH_UNLOCK_NODE_READ(head) do {                                      \
+#define HASH_UNLOCK_NODE_READ(head, node) do {                                      \
    if ((node)->lock) {                                                           \
-     (head)->ops.lock_read_unlock((node)->lock, (head)->ops.lockd);                  \
+     (head)->ops->lock_read_unlock((node)->lock, (head)->ops->lockd);                  \
    }                                                                           \
 } while(0)
-#define HASH_UNLOCK_NODE_WRITE(head) do {                                     \
+#define HASH_UNLOCK_NODE_WRITE(head, node) do {                                     \
    if ((node)->lock) {                                                           \
-     (head)->ops.lock_write_unlock((node)->lock, (head)->ops.lockd);                 \
+     (head)->ops->lock_write_unlock((node)->lock, (head)->ops->lockd);                 \
    }                                                                           \
 } while(0)
 
 /* Allocating methods */
 #define HASH_ALLOC_NODES(head, nodes, size) do {                              \
-  if ((head)->ops.alloc) (nodes) = (head)->ops.alloc(sizeof(*(nodes)) * (size), (head)->ops.allocd); \
+  if ((head)->ops->alloc) (nodes) = (head)->ops->alloc(sizeof(*(nodes)) * (size), (head)->ops->allocd); \
   else (nodes) = malloc(sizeof(*(nodes)) * (size));                           \
   memset(nodes, 0, sizeof(*(nodes)) * (size));                                \
-  if ((head)->ops.lock_init) {                                                 \
+  if ((head)->ops->lock_init) {                                                 \
     for (unsigned _i = 0; _i < size; _i ++) {                                 \
-      (nodes)[_i].lock = (head)->ops.lock_init((head)->ops.lockd);                \
+      (nodes)[_i].lock = (head)->ops->lock_init((head)->ops->lockd);                \
     }                                                                          \
   }                                                                            \
 } while(0)
 
 #define HASH_FREE_NODES(head, nodes, size) do {                              \
-  if ((head)->ops.lock_destroy) {                                              \
+  if ((head)->ops->lock_destroy) {                                              \
     for (unsigned _i = 0; _i < size; _i ++) {                                 \
-      (head)->ops.lock_destroy((nodes)[_i].lock, (head)->ops.lockd);           \
+      (head)->ops->lock_destroy((nodes)[_i].lock, (head)->ops->lockd);           \
     }                                                                          \
   }                                                                            \
-  if ((head)->ops.free) (head)->ops.free(sizeof(*(nodes)) * (size), (nodes), (head)->ops.allocd); \
+  if ((head)->ops->free) (head)->ops->free(sizeof(*(nodes)) * (size), (nodes), (head)->ops->allocd); \
   else free(nodes);                                                           \
 } while(0)
 
 /* Basic ops */
 #define HASH_INSERT(head, type, field, elm) do {                              \
-  if ((head)->nodes == NULL) HASH_MAKE_TABLE(head);                              \
+  if ((head)->buckets == NULL) HASH_MAKE_TABLE(head);                              \
   HASH_TYPE _hv;                                                               \
-  hv = (head)->ops.hash_func((elm), (head)->ops.hashd);                        \
-  (elm)->(field).hv = (hv);                                                    \
+  _hv = (head)->ops->hash_func((elm), (head)->ops->hashd);                        \
+  (elm)->field.hv = _hv;                                                    \
   HASH_LOCK_READ(head);                                                        \
-  HASH_NODE(type) bkt = HASH_FIND_BKT((head)->buckets, (head)->num_buckets, hv); \
-  HASH_LOCK_NODE_WRITE((head), bkt);                                             \
-  HASH_INSERT_BKT(bkt, (field), (elm));                                               \
+  HASH_NODE(type, field) *bkt = HASH_FIND_BKT((head)->buckets, (head)->num_buckets, _hv); \
+  HASH_LOCK_NODE_WRITE(head, bkt);                                             \
+  HASH_INSERT_BKT(bkt, field, elm);                                               \
   if (bkt->entries >= HASH_BKT_CAPACITY_THRESH) {                              \
     (head)->need_expand = 1;                                                     \
   }                                                                            \
@@ -240,21 +236,21 @@ struct {                                                                       \
   (head)->num_items++;                                                           \
   HASH_UNLOCK_READ(head);                                                      \
   if ((head)->need_expand) {                                                     \
-        HASH_EXPAND_BUCKETS(head);                                             \
+        HASH_EXPAND_BUCKETS(head, type, field);                                \
   }                                                                            \
 } while(0)
 
 #define HASH_FIND(head, type, field, elm, found) do {                         \
-  if ((head)->nodes == NULL) (found) = NULL;                                   \
+  if ((head)->buckets == NULL) (found) = NULL;                                   \
   else {                                                                       \
 	  HASH_TYPE _hv;                                                             \
 	  struct type *_telt;                                                       \
-	  hv = (head)->ops.hash_func((elm), (head)->ops.hashd);                      \
+	  _hv = (head)->ops->hash_func((elm), (head)->ops->hashd);                      \
 	  HASH_LOCK_READ(head);                                                      \
-	  HASH_NODE(type) bkt = HASH_FIND_BKT((head)->buckets, (head)->num_buckets, hv); \
+	  HASH_NODE(type, field) *bkt = HASH_FIND_BKT((head)->buckets, (head)->num_buckets, _hv); \
 	  HASH_LOCK_NODE_READ(head, bkt);                                            \
 	  _telt = bkt->first;                                                         \
-	  while(_telt != NULL && (head)->ops.hash_cmp((elm_, _telt) != 0) _telt = _telt->(field).next; \
+	  while(_telt != NULL && (head)->ops->hash_cmp((elm), _telt, (head)->ops->hashd) != 0) _telt = _telt->field.next; \
 	  (found) = _telt;                                                             \
 	  HASH_UNLOCK_NODE_READ((head), bkt);                                          \
 	  HASH_UNLOCK_READ(head);                                                    \
@@ -263,7 +259,7 @@ struct {                                                                       \
 
 
 #define HASH_INSERT_BKT(bkt, field, elm) do {                                    \
-  (elm)->(field).next = (bkt)->first;                                                  \
+  (elm)->field.next = (bkt)->first;                                                  \
   (bkt)->first = (elm);                                                        \
   (bkt)->entries ++;                                                           \
 } while(0)
@@ -271,9 +267,8 @@ struct {                                                                       \
 /* Private methods */
 #define HASH_MAKE_TABLE(head) do {                                            \
   (head)->num_buckets = HASH_INITIAL_NUM_BUCKETS;                              \
-  (head)->log2_num_buckets = HASH_INITIAL_NUM_BUCKETS_LOG2;                    \
   HASH_ALLOC_NODES((head), (head)->buckets, (head)->num_buckets);              \
-  if ((head)->ops.lock_init) (head)->resize_lock = (head)->ops.lock_init((head)->lockd); \
+  if ((head)->ops->lock_init) (head)->resize_lock = (head)->ops->lock_init((head)->ops->lockd); \
   (head)->signature = HASH_SIGNATURE;                                         \
 } while(0)
 
@@ -283,28 +278,30 @@ do {                                                                           \
   unsigned _saved_generation = (head)->generation;                            \
   HASH_LOCK_WRITE(head);                                                       \
   if ((head)->generation == _saved_generation) {                               \
-	  HASH_NODE(type) *_new_nodes, *bkt;                                         \
+	  HASH_NODE(type, field) *_new_nodes, *bkt;                                         \
 	  size_t _new_num = (head)->num_buckets * 2;                                 \
 	  HASH_ALLOC_NODES((head), _new_nodes, _new_num);                            \
+	  if (_new_nodes != NULL) {                                                 \
 	  for (size_t _i = 0; _i < (head)->num_buckets; _i ++) {                    \
-		  struct type *_elt = (head)->buckets[i]->first;                          \
+		  struct type *_elt = (head)->buckets[_i].first;                          \
 		  while (_elt) {                                                          \
-		    bkt = HASH_FIND_BKT(_new_nodes, _new_num, (_elt)->(field).hv);         \
-		    HASH_INSERT_BKT(bkt, (field), _elt);                                   \
-		    _elt = _elt->(field).next;                                             \
+		    bkt = HASH_FIND_BKT(_new_nodes, _new_num, _elt->field.hv);            \
+		    HASH_INSERT_BKT(bkt, field, _elt);                                     \
+		    _elt = _elt->field.next;                                               \
 		  }                                                                        \
     }                                                                          \
     HASH_FREE_NODES((head), (head)->buckets, (head)->num_buckets);             \
     (head)->buckets = _new_nodes;                                              \
     (head)->num_buckets = _new_num;                                            \
     (head)->generation ++;                                                     \
+    }                                                                          \
   }                                                                            \
   (head)->need_expand = 0;                                                     \
   HASH_UNLOCK_WRITE(head);                                                     \
 } while(0)
 
 #define HASH_FIND_BKT(nodes, size, hv)                                        \
-  ((nodes)[(hv) & ((size) - 1)])
+  (&(nodes)[(hv) & ((size) - 1)])
 
 /*
  * Generators part
@@ -320,10 +317,16 @@ typedef struct _hash_string_data_s {
 } hash_string_data_t;
 
 #define HASH_GENERATE_STR(type, field, keyfield)                              \
-  static HASH_TYPE _str_hash_op_##type##_##field##_hash(struct type *e, void *d) \
+	HASH_NODE(type, field) {                                                            \
+    struct type *first;                                                       \
+    void *lock;                                                               \
+    unsigned entries;                                                         \
+    HASH_TYPE hv;                                                              \
+  };                                                                           \
+  static HASH_TYPE _str_hash_op_##type##_##field##_hash(const struct type *e, void *d) \
   {                                                                            \
     hash_string_data_t *dt = (hash_string_data_t *)d;                          \
-    const unsigned char *key = (const unsigned char *)e->(keyfield);       \
+    const unsigned char *key = (const unsigned char *)e->keyfield;         \
     HASH_TYPE hash, i;                                                         \
     for(hash = i = 0; key[i] != 0; ++i) {                                      \
         if (dt) hash += dt->filter_func(key[i], dt->d);                        \
@@ -336,17 +339,17 @@ typedef struct _hash_string_data_s {
     hash += (hash << 15);                                                      \
     return hash;                                                              \
   }                                                                            \
-  static int _str_hash_op_##type##_##field##_cmp(struct type *e1, struct type *e2, void *d) \
+  static int _str_hash_op_##type##_##field##_cmp(const struct type *e1, const struct type *e2, void *d) \
   {                                                                            \
     hash_string_data_t *dt = (hash_string_data_t *)d;                          \
-    const unsigned char *k1 = (const unsigned char *)e1->(keyfield),       \
-      *k2 = (const unsigned char *)e2->(keyfield);                           \
-    if (d == NULL) return strcmp(k1, k2);                                     \
+    const unsigned char *k1 = (const unsigned char *)e1->keyfield,         \
+      *k2 = (const unsigned char *)e2->keyfield;                             \
+    if (d == NULL) return strcmp((const char*)k1, (const char*)k2);         \
     else {                                                                    \
       while (*k1) {                                                           \
         if (*k2 == 0) return 1;                                               \
-        unsigned char t1 = dt->filter_func(k1, dt->d),                        \
-          t2 = dt->filter_func(k2, dt->d);                                     \
+        unsigned char t1 = dt->filter_func(*k1, dt->d),                      \
+          t2 = dt->filter_func(*k2, dt->d);                                    \
         if (t1 != t2) return t1 - t2;                                         \
         ++k1; ++k2;                                                            \
       }                                                                        \
@@ -354,19 +357,20 @@ typedef struct _hash_string_data_s {
     }                                                                          \
     return 0;                                                                 \
   }                                                                            \
+  static HASH_OPS(type, field) _hash_ops_##type##_##field_glob = {           \
+    .hash_cmp = &_str_hash_op_##type##_##field##_cmp,                         \
+    .hash_func = &_str_hash_op_##type##_##field##_hash                        \
+  };                                                                           \
   static struct type* _str_hash_op_##type##_##field##_find(void *head, const char *k) \
   {                                                                            \
     struct type s, *p;                                                        \
-    HASH_HEAD(, (type)) *h;                                                    \
-    DECLTYPE_ASSIGN(s.(keyfield), k);                                          \
+    HASH_HEAD(, type, field) *h;                                                    \
+    DECLTYPE_ASSIGN((s.keyfield), k);                                          \
     DECLTYPE_ASSIGN(h, head);                                                  \
-    HASH_FIND(h, (type), (field), &s, p);                                      \
+    HASH_FIND(h, type, field, &s, p);                                      \
     return p;                                                                 \
   }                                                                            \
-  static HASH_OPS(type) _hash_ops_##type##_##field {                         \
-    .hash_cmp = &_str_hash_op_##type##_##field##_cmp;                         \
-    .hash_func = &_str_hash_op_##type##_##field##_hash;                       \
-  }
+
 
 #define HASH_FIND_STR(head, type, field, key)                                 \
   (_str_hash_op_##type##_##field##_find((head), (const char *)(key)))
