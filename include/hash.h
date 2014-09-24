@@ -239,7 +239,7 @@ struct {                                                                       \
   HASH_UNLOCK_NODE_WRITE(head, bkt);                                           \
   (head)->num_items++;                                                           \
   HASH_UNLOCK_READ(head);                                                      \
-  if ((head)->need_expand) {                                                     \
+  if ((head)->need_expand == 1) {                                              \
         HASH_EXPAND_BUCKETS(head, type, field);                                \
   }                                                                            \
 } while(0)
@@ -283,7 +283,7 @@ do {                                                                           \
   unsigned _saved_generation = (head)->generation;                            \
   HASH_LOCK_WRITE(head);                                                       \
   if ((head)->generation == _saved_generation) {                               \
-	  HASH_NODE(type, field) *_new_nodes, *bkt;                                         \
+	  HASH_NODE(type, field) *_new_nodes, *bkt;                                  \
 	  size_t _new_num = (head)->num_buckets * 2;                                 \
 	  HASH_ALLOC_NODES((head), _new_nodes, _new_num);                            \
 	  if (_new_nodes != NULL) {                                                 \
@@ -299,7 +299,7 @@ do {                                                                           \
 		    HASH_INSERT_BKT(bkt, field, _elt);                                     \
 		    if (bkt->entries > (head)->ideal_chain_maxlen) {                       \
 		    	(head)->nonideal_items++;                                            \
-		    	bkt->expand_mult = bkt->entries / (head)->ideal_chain_maxlen;          \
+		    	bkt->expand_mult = bkt->entries / (head)->ideal_chain_maxlen;         \
 		    }                                                                      \
 		    _elt = _tmp_elt;                                                       \
 		  }                                                                        \
@@ -310,13 +310,11 @@ do {                                                                           \
     (head)->log2_num_buckets++;                                                \
     (head)->ineff_expands = ((head)->nonideal_items > ((head)->num_items >> 1)) ? \
       ((head)->ineff_expands+1) : 0;                                           \
-    if ((head)->ineff_expands > 1) {                                           \
-    	(head)->need_expand = 2;                                                 \
-    }                                                                          \
     (head)->generation ++;                                                     \
     }                                                                          \
   }                                                                            \
-  (head)->need_expand = 0;                                                     \
+  if ((head)->ineff_expands > 1) (head)->need_expand = 2;                      \
+  else (head)->need_expand = 0;                                                \
   HASH_UNLOCK_WRITE(head);                                                     \
 } while(0)
 
