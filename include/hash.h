@@ -131,7 +131,10 @@ struct {                                                                       \
   struct name {                                                                \
    HASH_NODE(type, field) *buckets;                                             \
    struct _hash_ops_##type##_##field *ops;                                   \
-   unsigned num_buckets;                                                       \
+   unsigned num_buckets, log2_num_buckets;                                    \
+   unsigned ideal_chain_maxlen;                                               \
+   unsigned nonideal_items;                                                   \
+   unsigned ineff_expands, noexpand;                                          \
    unsigned num_items;                                                         \
    unsigned need_expand;                                                       \
    unsigned generation;                                                        \
@@ -228,9 +231,10 @@ struct {                                                                       \
   HASH_LOCK_READ(head);                                                        \
   HASH_NODE(type, field) *bkt = HASH_FIND_BKT((head)->buckets, (head)->num_buckets, _hv); \
   HASH_LOCK_NODE_WRITE(head, bkt);                                             \
-  HASH_INSERT_BKT(bkt, field, elm);                                               \
-  if (bkt->entries >= HASH_BKT_CAPACITY_THRESH) {                              \
-    (head)->need_expand = 1;                                                     \
+  HASH_INSERT_BKT(bkt, field, elm);                                            \
+  if (bkt->entries >= ((bkt->expand_mult+1) * HASH_BKT_CAPACITY_THRESH) &&    \
+    (head)->need_expand != 2) {                                                  \
+    (head)->need_expand = 1;                                                    \
   }                                                                            \
   HASH_UNLOCK_NODE_WRITE(head, bkt);                                           \
   (head)->num_items++;                                                           \
@@ -267,6 +271,7 @@ struct {                                                                       \
 /* Private methods */
 #define HASH_MAKE_TABLE(head) do {                                            \
   (head)->num_buckets = HASH_INITIAL_NUM_BUCKETS;                              \
+  (head)->log2_num_buckets = HASH_INITIAL_NUM_BUCKETS_LOG2;                   \
   HASH_ALLOC_NODES((head), (head)->buckets, (head)->num_buckets);              \
   if ((head)->ops->lock_init) (head)->resize_lock = (head)->ops->lock_init((head)->ops->lockd); \
   (head)->signature = HASH_SIGNATURE;                                         \
@@ -282,17 +287,32 @@ do {                                                                           \
 	  size_t _new_num = (head)->num_buckets * 2;                                 \
 	  HASH_ALLOC_NODES((head), _new_nodes, _new_num);                            \
 	  if (_new_nodes != NULL) {                                                 \
+		(head)->ideal_chain_maxlen =                                               \
+		    ((head)->num_items >> ((head)->log2_num_buckets+1)) +                  \
+		    (((head)->num_items & (((head)->num_buckets*2)-1)) ? 1 : 0);           \
+		(head)->nonideal_items = 0;                                                \
 	  for (size_t _i = 0; _i < (head)->num_buckets; _i ++) {                    \
-		  struct type *_elt = (head)->buckets[_i].first;                          \
+		  struct type *_elt = (head)->buckets[_i].first, *_tmp_elt;              \
 		  while (_elt) {                                                          \
+			  _tmp_elt = _elt->field.next;                                           \
 		    bkt = HASH_FIND_BKT(_new_nodes, _new_num, _elt->field.hv);            \
 		    HASH_INSERT_BKT(bkt, field, _elt);                                     \
-		    _elt = _elt->field.next;                                               \
+		    if (bkt->entries > (head)->ideal_chain_maxlen) {                       \
+		    	(head)->nonideal_items++;                                            \
+		    	bkt->expand_mult = bkt->entries / (head)->ideal_chain_maxlen;          \
+		    }                                                                      \
+		    _elt = _tmp_elt;                                                       \
 		  }                                                                        \
     }                                                                          \
     HASH_FREE_NODES((head), (head)->buckets, (head)->num_buckets);             \
     (head)->buckets = _new_nodes;                                              \
     (head)->num_buckets = _new_num;                                            \
+    (head)->log2_num_buckets++;                                                \
+    (head)->ineff_expands = ((head)->nonideal_items > ((head)->num_items >> 1)) ? \
+      ((head)->ineff_expands+1) : 0;                                           \
+    if ((head)->ineff_expands > 1) {                                           \
+    	(head)->need_expand = 2;                                                 \
+    }                                                                          \
     (head)->generation ++;                                                     \
     }                                                                          \
   }                                                                            \
@@ -339,6 +359,7 @@ typedef struct _hash_string_data_s {
     struct type *first;                                                       \
     void *lock;                                                               \
     unsigned entries;                                                         \
+    unsigned expand_mult;                                                     \
   };                                                                           \
   static HASH_TYPE _str_hash_op_##type##_##field##_hash(const struct type *e, void *d) \
   {                                                                            \
