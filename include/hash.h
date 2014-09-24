@@ -303,6 +303,24 @@ do {                                                                           \
 #define HASH_FIND_BKT(nodes, size, hv)                                        \
   (&(nodes)[(hv) & ((size) - 1)])
 
+
+#define HASH_ITER(type, field)                                                \
+  struct {                                                                    \
+    struct type *e;                                                         \
+    HASH_NODE(type, field) *bucket;                                            \
+  }
+
+#define HASH_ITER_INITIALIZER                                                 \
+		{ NULL, NULL }
+
+
+#define HASH_ITERATE(head, type, field, iter, elt)                             \
+    for ((iter).bucket = (head)->buckets;                                       \
+      (iter).bucket != (head)->buckets + (head)->num_buckets; ++(iter).bucket) \
+      if ((iter).bucket->first != NULL)                                         \
+        for ((elt) = (iter).e = (iter).bucket->first; (iter).e != NULL;         \
+            (elt) = (iter).e = (iter).e->field.next)                            \
+
 /*
  * Generators part
  */
@@ -317,11 +335,10 @@ typedef struct _hash_string_data_s {
 } hash_string_data_t;
 
 #define HASH_GENERATE_STR(type, field, keyfield)                              \
-	HASH_NODE(type, field) {                                                            \
+	HASH_NODE(type, field) {                                                     \
     struct type *first;                                                       \
     void *lock;                                                               \
     unsigned entries;                                                         \
-    HASH_TYPE hv;                                                              \
   };                                                                           \
   static HASH_TYPE _str_hash_op_##type##_##field##_hash(const struct type *e, void *d) \
   {                                                                            \
