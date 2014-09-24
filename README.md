@@ -82,4 +82,38 @@ mostly immutable you can use very effective locking primitives to reach the maxi
 ***TODO*** implement and document
 
 ## Performance comparision
+String keys, 1 million of insertions:
+
+* `UTHash`:
+
+*CPU*
+
+~~~
+% time ./a.out < ~/local/words-random.txt
+./a.out < ~/local/words-random.txt  0,37s user 0,11s system 99% cpu 0,482 total
+~~~
+
+*Memory*
+
+~~~
+ total heap usage: 2,000,014 allocs, 12 frees, 85,540,622 bytes allocated
+~~~
+* `jahash`:
+
+*CPU*
+
+~~~
+% time ./a.out < ~/local/words-random.txt 
+./a.out < ~/local/words-random.txt  0,32s user 0,07s system 98% cpu 0,391 total
+~~~
+
+*Memory*
+
+~~~
+total heap usage: 2,000,013 allocs, 12 frees, 47,637,454 bytes allocated
+~~~
+
+The size of tested structure contains 16 bytes of payload leading to approximately 
+70Mb overhead for `UTHash` and 31Mb overhead for `jahash`.
+
 ***Here are dragons***
