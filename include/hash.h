@@ -346,6 +346,86 @@ do {                                                                           \
             (iter).e != NULL;                                                  \
             (elt) = (iter).e = (iter).e->field.next)                           \
 
+typedef struct _hash_generic_hash_s {
+  void* (*hash_init)(void *d, void *space, unsigned spacelen);
+  void (*hash_update)(void *s, const unsigned char *in, size_t inlen, void *d);
+  HASH_TYPE (*hash_final)(void *s, void *d);
+  void *d;
+} _hash_generic_hash_t;
+/*
+ * Space required for generic hash functions
+ */
+#define HASH_SPACE_SIZE 64
+
+/*
+ * Generic Murmur3 hash function
+ */
+struct _hash_murmur_state {
+  uint32_t h;
+};
+
+static void* _hash_mur_init(void *d, void *space, unsigned spacelen)
+{
+  struct _hash_murmur_state *s = (struct _hash_murmur_state *)space;
+  s->h = 0;
+
+  return space;
+}
+
+static void _hash_mur_update(void *s, const unsigned char *in, size_t inlen, void *d)
+{
+  struct _hash_murmur_state *st = (struct _hash_murmur_state *)s;
+  const uint32_t c1 = 0xcc9e2d51;
+  const uint32_t c2 = 0x1b873593;
+  const int nblocks = inlen / 4;
+  const uint32_t *blocks = (const uint32_t *) (in);
+  const uint8_t *tail = (const uint8_t *) (in + (nblocks * 4));
+  int i;
+  uint32_t k, h = st->h;
+
+  for (i = 0; i < nblocks; i++) {
+    k = blocks[i];
+    k *= c1;
+    k = (k << 15) | (k >> (32 - 15));
+    k *= c2;
+    h ^= k;
+    h = (h << 13) | (h >> (32 - 13));
+    h = (h * 5) + 0xe6546b64;
+  }
+  k = 0;
+  switch (inlen & 3) {
+  case 3:
+    k ^= tail[2] << 16;
+  case 2:
+    k ^= tail[1] << 8;
+  case 1:
+    k ^= tail[0];
+    k *= c1;
+    k = (k << 15) | (k >> (32 - 15));
+    k *= c2;
+    h ^= k;
+  };
+  h ^= inlen;
+  h ^= h >> 16;
+  h *= 0x85ebca6b;
+  h ^= h >> 13;
+  h *= 0xc2b2ae35;
+  h ^= h >> 16;
+  st->h = h;
+}
+
+HASH_TYPE _hash_mur_final(void *s, void *d)
+{
+  struct _hash_murmur_state *st = (struct _hash_murmur_state *)s;
+  return st->h;
+}
+
+static _hash_generic_hash_t _hash_murmur = {
+  .hash_init = _hash_mur_init,
+  .hash_update = _hash_mur_update,
+  .hash_final = _hash_mur_final,
+  .d = NULL
+};
 /*
  * Generators part
  */
@@ -355,6 +435,7 @@ do {                                                                           \
  * case insensitive hash.
  */
 typedef struct _hash_string_data_s {
+  _hash_generic_hash_t *ht;
   unsigned char (*filter_func)(unsigned char in, void *d);
   void *d;
 } hash_string_data_t;
@@ -363,18 +444,20 @@ typedef struct _hash_string_data_s {
   static HASH_TYPE _str_hash_op_##type##_##field##_hash(const struct type *e, void *d) \
   {                                                                            \
     hash_string_data_t *dt = (hash_string_data_t *)d;                          \
+    unsigned char space[HASH_SPACE_SIZE];                                     \
+    void *s;                                                                   \
     const unsigned char *key = (const unsigned char *)e->keyfield;         \
     HASH_TYPE hash, i;                                                         \
-    for(hash = i = 0; key[i] != 0; ++i) {                                      \
-        if (dt) hash += dt->filter_func(key[i], dt->d);                        \
-        else hash += key[i];                                                   \
-        hash += (hash << 10);                                                  \
-        hash ^= (hash >> 6);                                                   \
+    s = dt->ht->hash_init(dt->ht->d, space, sizeof(space));                   \
+    if (!dt->filter_func) dt->ht->hash_update(s, key, strlen((const char*)key), \
+        dt->ht->d);                                                             \
+    else {                                                                     \
+      for(hash = i = 0; key[i] != 0; ++i) {                                    \
+        unsigned char _c = dt->filter_func(key[i], dt->d);                    \
+    	  dt->ht->hash_update(s, &_c, 1, dt->ht->d);                             \
+      }                                                                        \
     }                                                                          \
-    hash += (hash << 3);                                                       \
-    hash ^= (hash >> 11);                                                      \
-    hash += (hash << 15);                                                      \
-    return hash;                                                              \
+    return dt->ht->hash_final(s, dt->ht->d);                                    \
   }                                                                            \
   static int _str_hash_op_##type##_##field##_cmp(const struct type *e1, const struct type *e2, void *d) \
   {                                                                            \
@@ -394,9 +477,15 @@ typedef struct _hash_string_data_s {
     }                                                                          \
     return 0;                                                                 \
   }                                                                            \
+  static hash_string_data_t _hash_string_data_##type##_##field_glob = {      \
+    .ht = &_hash_murmur,                                                       \
+    .filter_func = NULL,                                                       \
+    .d = NULL                                                                  \
+  };                                                                           \
   static HASH_OPS(type, field) _hash_ops_##type##_##field_glob = {           \
     .hash_cmp = &_str_hash_op_##type##_##field##_cmp,                         \
-    .hash_func = &_str_hash_op_##type##_##field##_hash                        \
+    .hash_func = &_str_hash_op_##type##_##field##_hash,                       \
+    .hashd = &_hash_string_data_##type##_##field_glob                         \
   };                                                                           \
   static struct type* _str_hash_op_##type##_##field##_find(void *head, const char *k) \
   {                                                                            \
