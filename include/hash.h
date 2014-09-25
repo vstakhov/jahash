@@ -535,16 +535,16 @@ static _hash_generic_hash_t _hash_jenkins = {
  * Filter func is used to filter hashed or compared keys to allow, for instance
  * case insensitive hash.
  */
-typedef struct _hash_string_data_s {
+typedef struct _hash_filter_data_s {
   _hash_generic_hash_t *ht;
   unsigned char (*filter_func)(unsigned char in, void *d);
   void *d;
-} hash_string_data_t;
+} _hash_filter_data_t;
 
 #define HASH_GENERATE_STR(type, field, keyfield)                              \
   static HASH_TYPE _str_hash_op_##type##_##field##_hash(const struct type *e, void *d) \
   {                                                                            \
-    hash_string_data_t *dt = (hash_string_data_t *)d;                          \
+    _hash_filter_data_t *dt = (_hash_filter_data_t *)d;                          \
     unsigned char space[HASH_SPACE_SIZE];                                     \
     void *s;                                                                   \
     const unsigned char *key = (const unsigned char *)e->keyfield;         \
@@ -562,10 +562,10 @@ typedef struct _hash_string_data_s {
   }                                                                            \
   static int _str_hash_op_##type##_##field##_cmp(const struct type *e1, const struct type *e2, void *d) \
   {                                                                            \
-    hash_string_data_t *dt = (hash_string_data_t *)d;                          \
+	  _hash_filter_data_t *dt = (_hash_filter_data_t *)d;                         \
     const unsigned char *k1 = (const unsigned char *)e1->keyfield,         \
       *k2 = (const unsigned char *)e2->keyfield;                             \
-    if (d == NULL) return strcmp((const char*)k1, (const char*)k2);         \
+    if (dt->filter_func == NULL) return strcmp((const char*)k1, (const char*)k2); \
     else {                                                                    \
       while (*k1) {                                                           \
         if (*k2 == 0) return 1;                                               \
@@ -578,7 +578,7 @@ typedef struct _hash_string_data_s {
     }                                                                          \
     return 0;                                                                 \
   }                                                                            \
-  static hash_string_data_t _hash_string_data_##type##_##field_glob = {      \
+  static _hash_filter_data_t _hash_string_data_##type##_##field_glob = {     \
     .ht = &_hash_murmur,                                                       \
     .filter_func = NULL,                                                       \
     .d = NULL                                                                  \
