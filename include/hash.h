@@ -118,18 +118,19 @@ struct {                                                                       \
   HASH_TYPE hv;                                                                 \
 }
 
-/*
- * Hash node entry: one per bucket, overhead: 2 pointers + 1 size_t
- */
-#define HASH_NODE(type, field)                                                \
-    struct _hash_node_##type##_##field
+typedef struct _hash_node_s {
+  void *first;
+  void *lock;
+  unsigned entries;
+  unsigned expand_mult;
+} _hash_node_t;
 
 /*
  * Hash table itself. Overhead is negligible as it is one per hash table
  */
 #define HASH_HEAD(name, type, field)                                           \
   struct name {                                                                \
-   HASH_NODE(type, field) *buckets;                                             \
+   _hash_node_t *buckets;                                                      \
    struct _hash_ops_##type##_##field *ops;                                   \
    unsigned num_buckets, log2_num_buckets;                                    \
    unsigned ideal_chain_maxlen;                                               \
@@ -202,7 +203,8 @@ struct {                                                                       \
 
 /* Allocating methods */
 #define HASH_ALLOC_NODES(head, nodes, size) do {                              \
-  if ((head)->ops->alloc) (nodes) = (head)->ops->alloc(sizeof(*(nodes)) * (size), (head)->ops->allocd); \
+  if ((head)->ops->alloc) (nodes) = (head)->ops->alloc(sizeof(*(nodes)) * (size), \
+      (head)->ops->allocd);                                                    \
   else (nodes) = malloc(sizeof(*(nodes)) * (size));                           \
   memset(nodes, 0, sizeof(*(nodes)) * (size));                                \
   if ((head)->ops->lock_init) {                                                 \
@@ -229,9 +231,9 @@ struct {                                                                       \
   _hv = (head)->ops->hash_func((elm), (head)->ops->hashd);                        \
   (elm)->field.hv = _hv;                                                    \
   HASH_LOCK_READ(head);                                                        \
-  HASH_NODE(type, field) *bkt = HASH_FIND_BKT((head)->buckets, (head)->num_buckets, _hv); \
+  _hash_node_t *bkt = HASH_FIND_BKT((head)->buckets, (head)->num_buckets, _hv); \
   HASH_LOCK_NODE_WRITE(head, bkt);                                             \
-  HASH_INSERT_BKT(bkt, field, elm);                                            \
+  HASH_INSERT_BKT(bkt, type, field, elm);                                      \
   if (bkt->entries >= ((bkt->expand_mult+1) * HASH_BKT_CAPACITY_THRESH) &&    \
     (head)->need_expand != 2) {                                                  \
     (head)->need_expand = 1;                                                    \
@@ -251,10 +253,11 @@ struct {                                                                       \
 	  struct type *_telt;                                                       \
 	  _hv = (head)->ops->hash_func((elm), (head)->ops->hashd);                      \
 	  HASH_LOCK_READ(head);                                                      \
-	  HASH_NODE(type, field) *bkt = HASH_FIND_BKT((head)->buckets, (head)->num_buckets, _hv); \
+	  _hash_node_t *bkt = HASH_FIND_BKT((head)->buckets, (head)->num_buckets, _hv); \
 	  HASH_LOCK_NODE_READ(head, bkt);                                            \
-	  _telt = bkt->first;                                                         \
-	  while(_telt != NULL && (head)->ops->hash_cmp((elm), _telt, (head)->ops->hashd) != 0) _telt = _telt->field.next; \
+	  _telt = (struct type *)bkt->first;                                       \
+	  while(_telt != NULL && (head)->ops->hash_cmp((elm), _telt, (head)->ops->hashd) != 0) \
+	    _telt = _telt->field.next;                                             \
 	  (found) = _telt;                                                             \
 	  HASH_UNLOCK_NODE_READ((head), bkt);                                          \
 	  HASH_UNLOCK_READ(head);                                                    \
@@ -262,9 +265,9 @@ struct {                                                                       \
 } while(0)
 
 
-#define HASH_INSERT_BKT(bkt, field, elm) do {                                    \
-  (elm)->field.next = (bkt)->first;                                                  \
-  (bkt)->first = (elm);                                                        \
+#define HASH_INSERT_BKT(bkt, type, field, elm) do {                            \
+  (elm)->field.next = (struct type *)(bkt)->first;                             \
+  (bkt)->first = (void*)(elm);                                                 \
   (bkt)->entries ++;                                                           \
 } while(0)
 
@@ -285,7 +288,7 @@ do {                                                                           \
   unsigned _saved_generation = (head)->generation;                            \
   HASH_LOCK_WRITE(head);                                                       \
   if ((head)->generation == _saved_generation) {                               \
-	  HASH_NODE(type, field) *_new_nodes, *bkt;                                  \
+      _hash_node_t *_new_nodes, *bkt;                                            \
 	  unsigned _new_num = (head)->num_buckets + 1;                              \
 	  HASH_ROUNDUP32(_new_num);                                                 \
 	  HASH_ALLOC_NODES((head), _new_nodes, _new_num);                            \
@@ -295,11 +298,11 @@ do {                                                                           \
 		    (((head)->num_items & (((head)->num_buckets*2)-1)) ? 1 : 0);           \
 		(head)->nonideal_items = 0;                                                \
 	  for (size_t _i = 0; _i < (head)->num_buckets; _i ++) {                    \
-		  struct type *_elt = (head)->buckets[_i].first, *_tmp_elt;              \
+		  struct type *_elt = (struct type *)(head)->buckets[_i].first, *_tmp_elt; \
 		  while (_elt) {                                                          \
 			  _tmp_elt = _elt->field.next;                                           \
 		    bkt = HASH_FIND_BKT(_new_nodes, _new_num, _elt->field.hv);            \
-		    HASH_INSERT_BKT(bkt, field, _elt);                                     \
+		    HASH_INSERT_BKT(bkt, type, field, _elt);                               \
 		    if (bkt->entries > (head)->ideal_chain_maxlen) {                       \
 		    	(head)->nonideal_items++;                                            \
 		    	bkt->expand_mult = bkt->entries / (head)->ideal_chain_maxlen;         \
@@ -327,8 +330,8 @@ do {                                                                           \
 
 #define HASH_ITER(type, field)                                                \
   struct {                                                                    \
-    struct type *e;                                                         \
-    HASH_NODE(type, field) *bucket;                                            \
+    struct type *e;                                                           \
+    _hash_node_t *bucket;                                                     \
   }
 
 #define HASH_ITER_INITIALIZER                                                 \
@@ -339,8 +342,9 @@ do {                                                                           \
     for ((iter).bucket = (head)->buckets;                                       \
       (iter).bucket != (head)->buckets + (head)->num_buckets; ++(iter).bucket) \
       if ((iter).bucket->first != NULL)                                         \
-        for ((elt) = (iter).e = (iter).bucket->first; (iter).e != NULL;         \
-            (elt) = (iter).e = (iter).e->field.next)                            \
+        for ((elt) = (iter).e = (struct type *)(iter).bucket->first;           \
+            (iter).e != NULL;                                                  \
+            (elt) = (iter).e = (iter).e->field.next)                           \
 
 /*
  * Generators part
@@ -356,12 +360,6 @@ typedef struct _hash_string_data_s {
 } hash_string_data_t;
 
 #define HASH_GENERATE_STR(type, field, keyfield)                              \
-	HASH_NODE(type, field) {                                                     \
-    struct type *first;                                                       \
-    void *lock;                                                               \
-    unsigned entries;                                                         \
-    unsigned expand_mult;                                                     \
-  };                                                                           \
   static HASH_TYPE _str_hash_op_##type##_##field##_hash(const struct type *e, void *d) \
   {                                                                            \
     hash_string_data_t *dt = (hash_string_data_t *)d;                          \
