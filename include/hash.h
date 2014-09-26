@@ -246,8 +246,8 @@ typedef struct _hash_node_s {
   }                                                                            \
 } while(0)
 
-#define HASH_FIND(head, type, field, elm, found) do {                         \
-  if ((head)->buckets == NULL) (found) = NULL;                                   \
+#define HASH_FIND_ELT(head, type, field, elm, found) do {                     \
+  if ((head)->buckets == NULL) (found) = NULL;                                 \
   else {                                                                       \
 	  HASH_TYPE _hv;                                                             \
 	  struct type *_telt;                                                       \
@@ -541,7 +541,15 @@ typedef struct _hash_filter_data_s {
   void *d;
 } _hash_filter_data_t;
 
+
 #define HASH_GENERATE_STR(type, field, keyfield)                              \
+	HASH_GENERATE_STR_GENERIC(type, field, keyfield);                           \
+	HASH_GENERATE_OPS(type, field, keyfield,                                     \
+        &_str_hash_op_##type##_##field##_hash,                                \
+        &_str_hash_op_##type##_##field##_cmp,                                 \
+        &_hash_string_data_##type##_##field_glob)
+
+#define HASH_GENERATE_STR_GENERIC(type, field, keyfield)                      \
   static HASH_TYPE _str_hash_op_##type##_##field##_hash(const struct type *e, void *d) \
   {                                                                            \
     _hash_filter_data_t *dt = (_hash_filter_data_t *)d;                          \
@@ -555,14 +563,14 @@ typedef struct _hash_filter_data_s {
     else {                                                                     \
       for(hash = i = 0; key[i] != 0; ++i) {                                    \
         unsigned char _c = dt->filter_func(key[i], dt->d);                    \
-    	  dt->ht->hash_update(s, &_c, 1, dt->ht->d);                             \
+        dt->ht->hash_update(s, &_c, 1, dt->ht->d);                             \
       }                                                                        \
     }                                                                          \
     return dt->ht->hash_final(s, dt->ht->d);                                    \
   }                                                                            \
   static int _str_hash_op_##type##_##field##_cmp(const struct type *e1, const struct type *e2, void *d) \
   {                                                                            \
-	  _hash_filter_data_t *dt = (_hash_filter_data_t *)d;                         \
+    _hash_filter_data_t *dt = (_hash_filter_data_t *)d;                         \
     const unsigned char *k1 = (const unsigned char *)e1->keyfield,         \
       *k2 = (const unsigned char *)e2->keyfield;                             \
     if (dt->filter_func == NULL) return strcmp((const char*)k1, (const char*)k2); \
@@ -579,29 +587,23 @@ typedef struct _hash_filter_data_s {
     return 0;                                                                 \
   }                                                                            \
   static _hash_filter_data_t _hash_string_data_##type##_##field_glob = {     \
-    .ht = &_hash_murmur,                                                       \
-    .filter_func = NULL,                                                       \
-    .d = NULL                                                                  \
+	  .ht = &_hash_murmur,                                                       \
+	  .filter_func = NULL,                                                       \
+	  .d = NULL                                                                  \
   };                                                                           \
-  static HASH_OPS(type, field) _hash_ops_##type##_##field_glob = {           \
-    .hash_cmp = &_str_hash_op_##type##_##field##_cmp,                         \
-    .hash_func = &_str_hash_op_##type##_##field##_hash,                       \
-    .hashd = &_hash_string_data_##type##_##field_glob                         \
-  };                                                                           \
-  static struct type* _str_hash_op_##type##_##field##_find(void *head, const char *k) \
-  {                                                                            \
-    struct type s, *p;                                                        \
-    HASH_HEAD(, type, field) *h;                                                    \
-    DECLTYPE_ASSIGN((s.keyfield), k);                                          \
-    DECLTYPE_ASSIGN(h, head);                                                  \
-    HASH_FIND(h, type, field, &s, p);                                      \
-    return p;                                                                 \
-  }                                                                            \
+
 
 #define HASH_GENERATE_INT(type, field, keyfield)                              \
+	HASH_GENERATE_INT_GENERIC(type, field, keyfield);                            \
+  HASH_GENERATE_OPS(type, field, keyfield,                                     \
+          &_int_hash_op_##type##_##field##_hash,                              \
+          &_int_hash_op_##type##_##field##_cmp,                               \
+          &_hash_int_data_##type##_##field_glob)
+
+#define HASH_GENERATE_INT_GENERIC(type, field, keyfield)                       \
   static HASH_TYPE _int_hash_op_##type##_##field##_hash(const struct type *e, void *d) \
   {                                                                            \
-	  _hash_filter_data_t *dt = (_hash_filter_data_t *)d;                          \
+    _hash_filter_data_t *dt = (_hash_filter_data_t *)d;                          \
     unsigned char space[HASH_SPACE_SIZE];                                     \
     void *s;                                                                   \
     const unsigned char *key = (const unsigned char *)&e->keyfield;         \
@@ -615,32 +617,33 @@ typedef struct _hash_filter_data_s {
     int k1 = (int)e1->keyfield, k2 = (int)e2->keyfield;                       \
     return k1 - k2;                                                           \
   }                                                                            \
-  static _hash_filter_data_t _hash_int_data_##type##_##field_glob = {      \
+  static _hash_filter_data_t _hash_int_data_##type##_##field_glob = {         \
     .ht = &_hash_jenkins,                                                       \
     .filter_func = NULL,                                                       \
     .d = NULL                                                                  \
-  };                                                                           \
-  static HASH_OPS(type, field) _hash_ops_##type##_##field_glob = {           \
-    .hash_cmp = &_int_hash_op_##type##_##field##_cmp,                         \
-    .hash_func = &_int_hash_op_##type##_##field##_hash,                       \
-    .hashd = &_hash_int_data_##type##_##field_glob                            \
-  };                                                                           \
-  static struct type* _int_hash_op_##type##_##field##_find(void *head, int k) \
-  {                                                                            \
-    struct type s, *p;                                                        \
-    HASH_HEAD(, type, field) *h;                                                    \
-    DECLTYPE_ASSIGN((s.keyfield), k);                                          \
-    DECLTYPE_ASSIGN(h, head);                                                  \
-    HASH_FIND(h, type, field, &s, p);                                      \
-    return p;                                                                 \
-  }                                                                            \
+  }
 
+/*
+ * Generic operations generator
+ */
+#define HASH_GENERATE_OPS(type, field, keyfield, hashf, cmpf, d)              \
+		static HASH_OPS(type, field) _hash_ops_##type##_##field_glob = {         \
+		  .hash_func = (hashf),                                                    \
+		  .hash_cmp = (cmpf),                                                      \
+		  .hashd = (d)                                                             \
+		};                                                                         \
+    static struct type* _hash_op_##type##_##field##_find(void *head, void *k) \
+    {                                                                          \
+      struct type s, *p;                                                      \
+      HASH_HEAD(, type, field) *h;                                             \
+      DECLTYPE_ASSIGN((s.keyfield), k);                                        \
+      DECLTYPE_ASSIGN(h, head);                                                \
+      HASH_FIND_ELT(h, type, field, &s, p);                                    \
+      return p;                                                               \
+    }
 
-
-#define HASH_FIND_STR(head, type, field, key)                                 \
-  (_str_hash_op_##type##_##field##_find((head), (const char *)(key)))
-#define HASH_FIND_INT(head, type, field, key)                                 \
-  (_int_hash_op_##type##_##field##_find((head), (int)(key)))
+#define HASH_FIND(head, type, field, key)                                     \
+  (_hash_op_##type##_##field##_find((head), (void *)(key)))
 
 #ifdef HASH_BLOOM
 #define HASH_BLOOM_BITLEN (1ULL << HASH_BLOOM)
