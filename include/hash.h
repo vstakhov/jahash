@@ -298,7 +298,7 @@ typedef struct _hash_node_s {
           _tmp = _telt;                                                        \
           _telt = _telt->field.next;                                           \
           _tmp->field.next = NULL;                                             \
-          if ((free_func) != NULL) (free_func)(_tmp);                          \
+          if ((free_func) != NULL) _hash_op_##type##_##field##_delete_node((free_func), _tmp); \
         }                                                                      \
         bkt->first = NULL;                                                     \
         HASH_UNLOCK_NODE_WRITE((head), bkt);                                   \
@@ -679,6 +679,9 @@ typedef struct _hash_filter_data_s {
       DECLTYPE_ASSIGN(h, head);                                                \
       HASH_FIND_ELT(h, type, field, &s, p);                                    \
       return p;                                                               \
+    }                                                                          \
+    static void _hash_op_##type##_##field##_delete_node(void (*free_func)(struct type *p), struct type *p) { \
+       if (free_func != NULL) free_func(p);                                   \
     }
 
 #define HASH_FIND(head, type, field, key)                                     \
