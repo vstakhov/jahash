@@ -27,7 +27,7 @@
 #include <string.h>
 
 struct hnode {
-  const char *key;
+  char *key;
   int cookie;
   HASH_ENTRY(hnode) hh;
 };
@@ -35,6 +35,12 @@ struct hnode {
 HASH_GENERATE_STR(hnode, hh, key);
 
 HASH_HEAD(, hnode, hh) head;
+
+static void free_hnode(struct hnode *n)
+{
+  free(n->key);
+  free(n);
+}
 
 int
 main(int argc, char **argv)
@@ -59,6 +65,8 @@ main(int argc, char **argv)
       printf("%s: %d\n", node->key, node->cookie);
     }
   }
+
+  HASH_DESTROY(&head, hnode, hh, free_hnode);
 
   return 0;
 }

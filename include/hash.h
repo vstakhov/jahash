@@ -258,12 +258,66 @@ typedef struct _hash_node_s {
 	  _telt = (struct type *)bkt->first;                                       \
 	  while(_telt != NULL && (head)->ops->hash_cmp((elm), _telt, (head)->ops->hashd) != 0) \
 	    _telt = _telt->field.next;                                             \
-	  (found) = _telt;                                                             \
-	  HASH_UNLOCK_NODE_READ((head), bkt);                                          \
+	  (found) = _telt;                                                           \
+	  HASH_UNLOCK_NODE_READ((head), bkt);                                        \
 	  HASH_UNLOCK_READ(head);                                                    \
   }                                                                            \
 } while(0)
 
+#define HASH_DELETE_ELT(head, type, field, elm) do {                          \
+  if ((head)->buckets != NULL) {                                               \
+    HASH_LOCK_READ(head);                                                      \
+    struct type *_telt, *_prev = NULL;                                        \
+    _hash_node_t *bkt = HASH_FIND_BKT((head)->buckets, (head)->num_buckets, _hv); \
+    HASH_LOCK_NODE_WRITE(head, bkt);                                            \
+    _telt = (struct type *)bkt->first;                                        \
+    while(_telt != NULL && (head)->ops->hash_cmp((elm), _telt, (head)->ops->hashd) != 0) { \
+         _prev = _telt;                                                        \
+         _telt = _telt->field.next;                                            \
+    }                                                                          \
+    if (_telt != NULL) {                                                       \
+      if (prev != NULL) _prev->field.next = _telt->field.next;                 \
+      else bkt->first = (void *)_telt->field.next;                            \
+      _telt->field.next = NULL;                                                \
+    }                                                                          \
+    HASH_UNLOCK_NODE_WRITE((head), bkt);                                       \
+    HASH_UNLOCK_READ(head);                                                    \
+  }                                                                            \
+} while(0)
+
+#define HASH_CLEANUP_NODES(head, type, field, free_func) do {                 \
+  if ((head)->buckets != NULL) {                                               \
+      struct type *_telt, *_tmp;                                              \
+      _hash_node_t *bkt;                                                       \
+      HASH_LOCK_READ(head);                                                    \
+      for (unsigned _i = 0; _i < (head)->num_buckets; _i ++) {                \
+        bkt = &(head)->buckets[_i];                                            \
+        HASH_LOCK_NODE_READ(head, bkt);                                        \
+        _telt = (struct type *)bkt->first;                                    \
+        while(_telt != NULL) {                                                \
+          _tmp = _telt;                                                        \
+          _telt = _telt->field.next;                                           \
+          _tmp->field.next = NULL;                                             \
+          if ((free_func) != NULL) (free_func)(_tmp);                          \
+        }                                                                      \
+        bkt->first = NULL;                                                     \
+        HASH_UNLOCK_NODE_WRITE((head), bkt);                                   \
+      }                                                                        \
+      HASH_UNLOCK_READ(head);                                                  \
+    }                                                                          \
+} while(0)
+
+#define HASH_DESTROY(head, type, field, free_func) do {                       \
+  HASH_CLEANUP_NODES(head, type, field, free_func);                            \
+  HASH_LOCK_WRITE(head);                                                       \
+  HASH_FREE_NODES((head), (head)->buckets, (head)->num_buckets);               \
+  (head)->buckets = NULL;                                                      \
+  (head)->num_buckets = 0;                                                     \
+  (head)->log2_num_buckets = 0;                                                \
+  (head)->generation = 0;                                                      \
+  HASH_UNLOCK_WRITE(head);                                                     \
+  if ((head)->ops->lock_destroy) (head)->ops->lock_destroy((head)->resize_lock, (head)->ops->lockd); \
+} while(0)
 
 #define HASH_INSERT_BKT(bkt, type, field, elm) do {                            \
   (elm)->field.next = (struct type *)(bkt)->first;                             \
