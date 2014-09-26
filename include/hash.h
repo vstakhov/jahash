@@ -99,6 +99,13 @@ struct  _hash_ops_##type##_##field {                                         \
   void (*lock_write_unlock)(void *l, void *d);                                 \
   void (*lock_destroy)(void *l, void *d);                                      \
   void *lockd;                                                                 \
+  void * (*lockn_init)(void *d);                                                \
+  void (*lockn_read_lock)(void *l, void *d);                                    \
+  void (*lockn_read_unlock)(void *l, void *d);                                  \
+  void (*lockn_write_lock)(void *l, void *d);                                   \
+  void (*lockn_write_unlock)(void *l, void *d);                                 \
+  void (*lockn_destroy)(void *l, void *d);                                      \
+  void *locknd;                                                                 \
   void *(*bloom_init)(void *d);                                                \
   void (*bloom_add)(void *b, HASH_TYPE h);                                     \
   void (*bloom_test)(void *b, HASH_TYPE h);                                    \
@@ -182,22 +189,22 @@ typedef struct _hash_node_s {
 } while(0)
 #define HASH_LOCK_NODE_READ(head, node) do {                                  \
    if ((node)->lock) {                                                           \
-     (head)->ops->lock_read_lock((node)->lock, (head)->ops->lockd);                    \
+     (head)->ops->lockn_read_lock((node)->lock, (head)->ops->locknd);                    \
    }                                                                           \
 } while(0)
 #define HASH_LOCK_NODE_WRITE(head, node) do {                                       \
    if ((node)->lock) {                                                           \
-     (head)->ops->lock_write_lock((node)->lock, (head)->ops->lockd);                   \
+     (head)->ops->lockn_write_lock((node)->lock, (head)->ops->locknd);                   \
    }                                                                           \
 } while(0)
 #define HASH_UNLOCK_NODE_READ(head, node) do {                                      \
    if ((node)->lock) {                                                           \
-     (head)->ops->lock_read_unlock((node)->lock, (head)->ops->lockd);                  \
+     (head)->ops->lockn_read_unlock((node)->lock, (head)->ops->locknd);                  \
    }                                                                           \
 } while(0)
 #define HASH_UNLOCK_NODE_WRITE(head, node) do {                                     \
    if ((node)->lock) {                                                           \
-     (head)->ops->lock_write_unlock((node)->lock, (head)->ops->lockd);                 \
+     (head)->ops->lockn_write_unlock((node)->lock, (head)->ops->locknd);                 \
    }                                                                           \
 } while(0)
 
@@ -207,17 +214,17 @@ typedef struct _hash_node_s {
       (head)->ops->allocd);                                                    \
   else (nodes) = malloc(sizeof(*(nodes)) * (size));                           \
   memset(nodes, 0, sizeof(*(nodes)) * (size));                                \
-  if ((head)->ops->lock_init) {                                                 \
+  if ((head)->ops->lockn_init) {                                                 \
     for (unsigned _i = 0; _i < size; _i ++) {                                 \
-      (nodes)[_i].lock = (head)->ops->lock_init((head)->ops->lockd);                \
+      (nodes)[_i].lock = (head)->ops->lockn_init((head)->ops->locknd);                \
     }                                                                          \
   }                                                                            \
 } while(0)
 
 #define HASH_FREE_NODES(head, nodes, size) do {                              \
-  if ((head)->ops->lock_destroy) {                                              \
+  if ((head)->ops->lockn_destroy) {                                              \
     for (unsigned _i = 0; _i < size; _i ++) {                                 \
-      (head)->ops->lock_destroy((nodes)[_i].lock, (head)->ops->lockd);           \
+      (head)->ops->lockn_destroy((nodes)[_i].lock, (head)->ops->locknd);           \
     }                                                                          \
   }                                                                            \
   if ((head)->ops->free) (head)->ops->free(sizeof(*(nodes)) * (size), (nodes), (head)->ops->allocd); \
