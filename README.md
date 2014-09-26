@@ -13,6 +13,12 @@ version uses just extra 8 bytes per hash element (uthash uses about 56 bytes per
 all well tested and the performance of those operations is optimized as well. Moreover, `uthash` comes with the extensive API that is documented
 and supported by `jahash`.
 
+## Performance benchmark
+
+Lookup benchmark with hit probability 50%. Hardware: AMD Opteron(tm) Processor 6344
+
+![graphics](https://github.com/vstakhov/jahash/raw/master/jahash.png)
+
 ## Design principles
 You need to define `HASH_ENTRY` element in your target structure, then you need to declare head in top-level structure by adding
 `HASH_HEAD(name, type)` somewhere in it, for example:
@@ -49,10 +55,10 @@ void init(struct top *top)
 	
 	/* Search for an element */
 	search.key = "test";
-	found = HASH_FIND(&top->head, node, hh, &search);
+	found = HASH_FIND_ELT(&top->head, node, hh, &search);
 	
 	/* Or even simpler */
-	found = HASH_FIND_STR(&top->head, node, hh, "test");
+	found = HASH_FIND(&top->head, node, hh, "test");
 }
 ~~~
 
