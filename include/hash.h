@@ -360,82 +360,72 @@ typedef struct _hash_generic_hash_s {
 /*
  * Generic Murmur3 hash function
  */
-struct _hash_murmur_state {
-  uint32_t h;
-};
-
-static void* _hash_mur_init(void *d, void *space, unsigned spacelen)
-{
-  struct _hash_murmur_state *s = (struct _hash_murmur_state *)space;
-  s->h = 0;
-
-  return space;
-}
-
-static void _hash_mur_update(void *s, const unsigned char *in, size_t inlen, void *d)
-{
-  struct _hash_murmur_state *st = (struct _hash_murmur_state *)s;
-  const uint32_t c1 = 0xcc9e2d51;
-  const uint32_t c2 = 0x1b873593;
-  const int nblocks = inlen / 4;
-  const uint32_t *blocks = (const uint32_t *) (in);
-  const uint8_t *tail = (const uint8_t *) (in + (nblocks * 4));
-  int i;
-  uint32_t k, h = st->h;
-
-  for (i = 0; i < nblocks; i++) {
-    k = blocks[i];
-    k *= c1;
-    k = (k << 15) | (k >> (32 - 15));
-    k *= c2;
-    h ^= k;
-    h = (h << 13) | (h >> (32 - 13));
-    h = (h * 5) + 0xe6546b64;
+#define HASH_INIT_MURMUR(type, field)                                         \
+	struct _hash_murmur_state_##type##_##field {                                \
+    uint32_t h;                                                                \
+  };                                                                           \
+  static void* _hash_mur_##type##_##field##_init(void *d, void *space, unsigned spacelen) \
+  { \
+    struct _hash_murmur_state_##type##_##field *s = (struct _hash_murmur_state_##type##_##field *)space; \
+    s->h = 0; \
+    return space; \
+  } \
+  static void _hash_mur_##type##_##field##_update(void *s, const unsigned char *in, size_t inlen, void *d) \
+  { \
+    struct _hash_murmur_state_##type##_##field *st = (struct _hash_murmur_state_##type##_##field *)s; \
+    const uint32_t c1 = 0xcc9e2d51; \
+    const uint32_t c2 = 0x1b873593; \
+    const int nblocks = inlen / 4; \
+    const uint32_t *blocks = (const uint32_t *) (in); \
+    const uint8_t *tail = (const uint8_t *) (in + (nblocks * 4)); \
+    int i; \
+    uint32_t k, h = st->h; \
+    for (i = 0; i < nblocks; i++) { \
+      k = blocks[i]; \
+      k *= c1; \
+      k = (k << 15) | (k >> (32 - 15)); \
+      k *= c2; \
+      h ^= k; \
+      h = (h << 13) | (h >> (32 - 13)); \
+      h = (h * 5) + 0xe6546b64; \
+    } \
+    k = 0; \
+    switch (inlen & 3) { \
+    case 3: \
+      k ^= tail[2] << 16; \
+    case 2: \
+      k ^= tail[1] << 8; \
+    case 1: \
+      k ^= tail[0]; \
+      k *= c1; \
+      k = (k << 15) | (k >> (32 - 15)); \
+      k *= c2; \
+      h ^= k; \
+    } \
+    h ^= inlen; \
+    h ^= h >> 16; \
+    h *= 0x85ebca6b; \
+    h ^= h >> 13; \
+    h *= 0xc2b2ae35; \
+    h ^= h >> 16; \
+    st->h = h; \
+  } \
+  HASH_TYPE _hash_mur_##type##_##field##_final(void *s, void *d) \
+  { \
+	  struct _hash_murmur_state_##type##_##field *st = (struct _hash_murmur_state_##type##_##field *)s; \
+	  return st->h; \
+  } \
+  static _hash_generic_hash_t _hash_murmur_##type##_##field = { \
+	 .hash_init = &_hash_mur_##type##_##field##_init, \
+	 .hash_update = &_hash_mur_##type##_##field##_update, \
+	 .hash_final = &_hash_mur_##type##_##field##_final, \
+	 .d = NULL \
   }
-  k = 0;
-  switch (inlen & 3) {
-  case 3:
-    k ^= tail[2] << 16;
-  case 2:
-    k ^= tail[1] << 8;
-  case 1:
-    k ^= tail[0];
-    k *= c1;
-    k = (k << 15) | (k >> (32 - 15));
-    k *= c2;
-    h ^= k;
-  };
-  h ^= inlen;
-  h ^= h >> 16;
-  h *= 0x85ebca6b;
-  h ^= h >> 13;
-  h *= 0xc2b2ae35;
-  h ^= h >> 16;
-  st->h = h;
-}
-
-HASH_TYPE _hash_mur_final(void *s, void *d)
-{
-  struct _hash_murmur_state *st = (struct _hash_murmur_state *)s;
-  return st->h;
-}
-
-static _hash_generic_hash_t _hash_murmur = {
-  .hash_init = _hash_mur_init,
-  .hash_update = _hash_mur_update,
-  .hash_final = _hash_mur_final,
-  .d = NULL
-};
 
 /*
  * Generic Jenkins hash function
  * http://eternallyconfuzzled.com/tuts/algorithms/jsw_tut_hashing.aspx
  */
-struct _hash_jen_state {
-  uint32_t h;
-  uint32_t init;
-};
-
 #define JEN_MIX(a,b,c)                                                        \
 {                                                                              \
   a -= b; a -= c; a ^= ( c >> 13 );                                            \
@@ -448,85 +438,78 @@ struct _hash_jen_state {
   b -= c; b -= a; b ^= ( a << 10 );                                            \
   c -= a; c -= b; c ^= ( b >> 15 );                                            \
 }
-
-static void* _hash_jen_init(void *d, void *space, unsigned spacelen)
-{
-  struct _hash_jen_state *s = (struct _hash_jen_state *)space;
-  s->h = 0xfeedbeef;
-  s->init = 0x9e3779b9;
-
-  return space;
-}
-
-static void _hash_jen_update (void *s, const unsigned char *k, size_t inlen,
-    void *d)
-{
-  struct _hash_jen_state *st = (struct _hash_jen_state *) s;
-  unsigned a, b;
-  unsigned c;
-  unsigned len = inlen;
-
-  c = st->init;
-  a = b = 0x9e3779b9;
-
-  while (len >= 12) {
-    a += (k[0] + ((unsigned) k[1] << 8) + ((unsigned) k[2] << 16)
-        + ((unsigned) k[3] << 24));
-    b += (k[4] + ((unsigned) k[5] << 8) + ((unsigned) k[6] << 16)
-        + ((unsigned) k[7] << 24));
-    c += (k[8] + ((unsigned) k[9] << 8) + ((unsigned) k[10] << 16)
-        + ((unsigned) k[11] << 24));
-
-    JEN_MIX(a, b, c);
-
-    k += 12;
-    len -= 12;
+#define HASH_INIT_JEN(type, field) \
+  struct _hash_jen_##type##_##field##_state { \
+    uint32_t h; \
+    uint32_t init; \
+  }; \
+  static void* _hash_jen_##type##_##field##_init(void *d, void *space, unsigned spacelen) \
+  { \
+    struct _hash_jen_##type##_##field##_state *s = (struct _hash_jen_##type##_##field##_state *)space; \
+    s->h = 0xfeedbeef; \
+    s->init = 0x9e3779b9; \
+    return space; \
+  } \
+  static void _hash_jen_##type##_##field##_update (void *s, const unsigned char *k, size_t inlen, \
+      void *d) \
+  { \
+    struct _hash_jen_##type##_##field##_state *st = (struct _hash_jen_##type##_##field##_state *) s; \
+    unsigned a, b; \
+    unsigned c; \
+    unsigned len = inlen; \
+    c = st->init; \
+    a = b = 0x9e3779b9; \
+    while (len >= 12) { \
+      a += (k[0] + ((unsigned) k[1] << 8) + ((unsigned) k[2] << 16) \
+          + ((unsigned) k[3] << 24)); \
+      b += (k[4] + ((unsigned) k[5] << 8) + ((unsigned) k[6] << 16) \
+          + ((unsigned) k[7] << 24)); \
+      c += (k[8] + ((unsigned) k[9] << 8) + ((unsigned) k[10] << 16) \
+          + ((unsigned) k[11] << 24)); \
+      JEN_MIX(a, b, c); \
+      k += 12; \
+      len -= 12; \
+    } \
+    c += inlen; \
+    switch (len) { \
+    case 11: \
+      c += ((unsigned) k[10] << 24); \
+    case 10: \
+      c += ((unsigned) k[9] << 16); \
+    case 9: \
+      c += ((unsigned) k[8] << 8); \
+    case 8: \
+      b += ((unsigned) k[7] << 24); \
+    case 7: \
+      b += ((unsigned) k[6] << 16); \
+    case 6: \
+      b += ((unsigned) k[5] << 8); \
+    case 5: \
+      b += k[4]; \
+    case 4: \
+      a += ((unsigned) k[3] << 24); \
+    case 3: \
+      a += ((unsigned) k[2] << 16); \
+    case 2: \
+      a += ((unsigned) k[1] << 8); \
+    case 1: \
+      a += k[0]; \
+    } \
+    JEN_MIX(a, b, c); \
+    st->h = c; \
+  } \
+  HASH_TYPE _hash_jen_##type##_##field##_final(void *s, void *d) \
+  { \
+    struct _hash_jen_##type##_##field##_state *st = (struct _hash_jen_##type##_##field##_state *)s; \
+    return st->h; \
+  } \
+  static _hash_generic_hash_t _hash_jenkins_##type##_##field## = { \
+    .hash_init = &_hash_jen_##type##_##field##_init, \
+    .hash_update = &_hash_jen_##type##_##field##_update, \
+    .hash_final = &_hash_jen_##type##_##field##_final, \
+    .d = NULL \
   }
 
-  c += inlen;
-
-  switch (len) {
-  case 11:
-    c += ((unsigned) k[10] << 24);
-  case 10:
-    c += ((unsigned) k[9] << 16);
-  case 9:
-    c += ((unsigned) k[8] << 8);
-    /* First byte of c reserved for length */
-  case 8:
-    b += ((unsigned) k[7] << 24);
-  case 7:
-    b += ((unsigned) k[6] << 16);
-  case 6:
-    b += ((unsigned) k[5] << 8);
-  case 5:
-    b += k[4];
-  case 4:
-    a += ((unsigned) k[3] << 24);
-  case 3:
-    a += ((unsigned) k[2] << 16);
-  case 2:
-    a += ((unsigned) k[1] << 8);
-  case 1:
-    a += k[0];
-  }
-
-  JEN_MIX(a, b, c);
-  st->h = c;
-}
-
-HASH_TYPE _hash_jen_final(void *s, void *d)
-{
-  struct _hash_jen_state *st = (struct _hash_jen_state *)s;
-  return st->h;
-}
-
-static _hash_generic_hash_t _hash_jenkins = {
-  .hash_init = _hash_jen_init,
-  .hash_update = _hash_jen_update,
-  .hash_final = _hash_jen_final,
-  .d = NULL
-};
 /*
  * Generators part
  */
@@ -543,13 +526,14 @@ typedef struct _hash_filter_data_s {
 
 
 #define HASH_GENERATE_STR(type, field, keyfield)                              \
-	HASH_GENERATE_STR_GENERIC(type, field, keyfield);                           \
+	HASH_INIT_MURMUR(type, field);                                              \
+	HASH_GENERATE_STR_GENERIC(type, field, keyfield, murmur);                           \
 	HASH_GENERATE_OPS(type, field, keyfield,                                     \
         &_str_hash_op_##type##_##field##_hash,                                \
         &_str_hash_op_##type##_##field##_cmp,                                 \
         &_hash_string_data_##type##_##field_glob)
 
-#define HASH_GENERATE_STR_GENERIC(type, field, keyfield)                      \
+#define HASH_GENERATE_STR_GENERIC(type, field, keyfield, hash_type)           \
   static HASH_TYPE _str_hash_op_##type##_##field##_hash(const struct type *e, void *d) \
   {                                                                            \
     _hash_filter_data_t *dt = (_hash_filter_data_t *)d;                          \
@@ -587,20 +571,21 @@ typedef struct _hash_filter_data_s {
     return 0;                                                                 \
   }                                                                            \
   static _hash_filter_data_t _hash_string_data_##type##_##field_glob = {     \
-	  .ht = &_hash_murmur,                                                       \
+	  .ht = &_hash_##hash_type##_##type##_##field,                              \
 	  .filter_func = NULL,                                                       \
 	  .d = NULL                                                                  \
   };                                                                           \
 
 
 #define HASH_GENERATE_INT(type, field, keyfield)                              \
-	HASH_GENERATE_INT_GENERIC(type, field, keyfield);                            \
+	HASH_INIT_JENKINS(type, field);                                              \
+	HASH_GENERATE_INT_GENERIC(type, field, keyfield, jenkins);                   \
   HASH_GENERATE_OPS(type, field, keyfield,                                     \
           &_int_hash_op_##type##_##field##_hash,                              \
           &_int_hash_op_##type##_##field##_cmp,                               \
           &_hash_int_data_##type##_##field_glob)
 
-#define HASH_GENERATE_INT_GENERIC(type, field, keyfield)                       \
+#define HASH_GENERATE_INT_GENERIC(type, field, keyfield, hash_type)           \
   static HASH_TYPE _int_hash_op_##type##_##field##_hash(const struct type *e, void *d) \
   {                                                                            \
     _hash_filter_data_t *dt = (_hash_filter_data_t *)d;                          \
@@ -618,7 +603,7 @@ typedef struct _hash_filter_data_s {
     return k1 - k2;                                                           \
   }                                                                            \
   static _hash_filter_data_t _hash_int_data_##type##_##field_glob = {         \
-    .ht = &_hash_jenkins,                                                       \
+    .ht = &_hash_##hash_type##_##type##_##field,                              \
     .filter_func = NULL,                                                       \
     .d = NULL                                                                  \
   }
