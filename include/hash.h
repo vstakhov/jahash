@@ -296,7 +296,7 @@ typedef struct _hash_node_s {
       HASH_LOCK_READ(head);                                                    \
       for (unsigned _i = 0; _i < (head)->num_buckets; _i ++) {                \
         bkt = &(head)->buckets[_i];                                            \
-        HASH_LOCK_NODE_READ(head, bkt);                                        \
+        HASH_LOCK_NODE_WRITE(head, bkt);                                       \
         _telt = (struct type *)bkt->first;                                    \
         while(_telt != NULL) {                                                \
           _tmp = _telt;                                                        \
@@ -305,7 +305,7 @@ typedef struct _hash_node_s {
           if ((free_func) != NULL) _hash_op_##type##_##field##_delete_node((free_func), _tmp); \
         }                                                                      \
         bkt->first = NULL;                                                     \
-        HASH_UNLOCK_NODE_WRITE((head), bkt);                                   \
+        HASH_UNLOCK_NODE_WRITE(head, bkt);                                   \
       }                                                                        \
       (head)->num_items = 0;                                                   \
       HASH_UNLOCK_READ(head);                                                  \
