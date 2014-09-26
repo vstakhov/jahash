@@ -233,15 +233,14 @@ typedef struct _hash_node_s {
   HASH_LOCK_READ(head);                                                        \
   _hash_node_t *bkt = HASH_FIND_BKT((head)->buckets, (head)->num_buckets, _hv); \
   HASH_LOCK_NODE_WRITE(head, bkt);                                             \
+  (head)->num_items++;                                                         \
+  if (bkt->entries + 1 >= ((bkt->expand_mult+1) * HASH_BKT_CAPACITY_THRESH) && \
+    (head)->need_expand != 2) {                                                \
+    (head)->need_expand = 1;                                                   \
+  }                                                                            \
   HASH_UNLOCK_READ(head);                                                      \
   HASH_INSERT_BKT(bkt, type, field, elm);                                      \
-  if (bkt->entries >= ((bkt->expand_mult+1) * HASH_BKT_CAPACITY_THRESH) &&    \
-    (head)->need_expand != 2) {                                                  \
-    (head)->need_expand = 1;                                                    \
-  }                                                                            \
   HASH_UNLOCK_NODE_WRITE(head, bkt);                                           \
-  (head)->num_items++;                                                           \
-  HASH_UNLOCK_READ(head);                                                      \
   if ((head)->need_expand == 1) {                                              \
         HASH_EXPAND_BUCKETS(head, type, field);                                \
   }                                                                            \
@@ -262,7 +261,6 @@ typedef struct _hash_node_s {
 	    _telt = _telt->field.next;                                             \
 	  (found) = _telt;                                                           \
 	  HASH_UNLOCK_NODE_READ((head), bkt);                                        \
-	  HASH_UNLOCK_READ(head);                                                    \
   }                                                                            \
 } while(0)
 
@@ -282,6 +280,10 @@ typedef struct _hash_node_s {
       if (prev != NULL) _prev->field.next = _telt->field.next;                 \
       else bkt->first = (void *)_telt->field.next;                            \
       _telt->field.next = NULL;                                                \
+      HASH_LOCK_READ(head);                                                    \
+      (head)->num_items--;                                                     \
+      HASH_UNLOCK_READ(head);                                                  \
+      bkt->entries --;                                                         \
     }                                                                          \
     HASH_UNLOCK_NODE_WRITE((head), bkt);                                       \
   }                                                                            \
@@ -305,6 +307,7 @@ typedef struct _hash_node_s {
         bkt->first = NULL;                                                     \
         HASH_UNLOCK_NODE_WRITE((head), bkt);                                   \
       }                                                                        \
+      (head)->num_items = 0;                                                   \
       HASH_UNLOCK_READ(head);                                                  \
     }                                                                          \
 } while(0)
@@ -317,6 +320,7 @@ typedef struct _hash_node_s {
   (head)->num_buckets = 0;                                                     \
   (head)->log2_num_buckets = 0;                                                \
   (head)->generation = 0;                                                      \
+  (head)->num_items = 0;                                                       \
   HASH_UNLOCK_WRITE(head);                                                     \
   if ((head)->ops->lock_destroy) (head)->ops->lock_destroy((head)->resize_lock, (head)->ops->lockd); \
 } while(0)
