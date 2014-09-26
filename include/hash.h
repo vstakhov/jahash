@@ -233,6 +233,7 @@ typedef struct _hash_node_s {
   HASH_LOCK_READ(head);                                                        \
   _hash_node_t *bkt = HASH_FIND_BKT((head)->buckets, (head)->num_buckets, _hv); \
   HASH_LOCK_NODE_WRITE(head, bkt);                                             \
+  HASH_UNLOCK_READ(head);                                                      \
   HASH_INSERT_BKT(bkt, type, field, elm);                                      \
   if (bkt->entries >= ((bkt->expand_mult+1) * HASH_BKT_CAPACITY_THRESH) &&    \
     (head)->need_expand != 2) {                                                  \
@@ -256,6 +257,7 @@ typedef struct _hash_node_s {
 	  _hash_node_t *bkt = HASH_FIND_BKT((head)->buckets, (head)->num_buckets, _hv); \
 	  HASH_LOCK_NODE_READ(head, bkt);                                            \
 	  _telt = (struct type *)bkt->first;                                       \
+	  HASH_UNLOCK_READ(head);                                                    \
 	  while(_telt != NULL && (head)->ops->hash_cmp((elm), _telt, (head)->ops->hashd) != 0) \
 	    _telt = _telt->field.next;                                             \
 	  (found) = _telt;                                                           \
@@ -271,6 +273,7 @@ typedef struct _hash_node_s {
     _hash_node_t *bkt = HASH_FIND_BKT((head)->buckets, (head)->num_buckets, _hv); \
     HASH_LOCK_NODE_WRITE(head, bkt);                                            \
     _telt = (struct type *)bkt->first;                                        \
+    HASH_UNLOCK_READ(head);                                                    \
     while(_telt != NULL && (head)->ops->hash_cmp((elm), _telt, (head)->ops->hashd) != 0) { \
          _prev = _telt;                                                        \
          _telt = _telt->field.next;                                            \
@@ -281,7 +284,6 @@ typedef struct _hash_node_s {
       _telt->field.next = NULL;                                                \
     }                                                                          \
     HASH_UNLOCK_NODE_WRITE((head), bkt);                                       \
-    HASH_UNLOCK_READ(head);                                                    \
   }                                                                            \
 } while(0)
 
@@ -353,6 +355,7 @@ do {                                                                           \
 		(head)->nonideal_items = 0;                                                \
 	  for (size_t _i = 0; _i < (head)->num_buckets; _i ++) {                    \
 		  struct type *_elt = (struct type *)(head)->buckets[_i].first, *_tmp_elt; \
+		  HASH_LOCK_NODE_WRITE(head, &(head)->buckets[_i]);                        \
 		  while (_elt) {                                                          \
 			  _tmp_elt = _elt->field.next;                                           \
 		    bkt = HASH_FIND_BKT(_new_nodes, _new_num, _elt->field.hv);            \
@@ -363,6 +366,7 @@ do {                                                                           \
 		    }                                                                      \
 		    _elt = _tmp_elt;                                                       \
 		  }                                                                        \
+		  HASH_UNLOCK_NODE_WRITE(head, &(head)->buckets[_i]);                      \
     }                                                                          \
     HASH_FREE_NODES((head), (head)->buckets, (head)->num_buckets);             \
     (head)->buckets = _new_nodes;                                              \
