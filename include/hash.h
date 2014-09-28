@@ -429,16 +429,18 @@ typedef struct _hash_generic_hash_s {
 /*
  * Generic Murmur3 hash function
  */
-#define HASH_INIT_MURMUR(type, field)                                         \
-	struct _hash_murmur_state_##type##_##field {                                \
+#define HASH_INIT_MURMUR(type, field)                                          \
+	struct _hash_murmur_state_##type##_##field {                               \
     uint32_t h;                                                                \
+    size_t count;                                                              \
   };                                                                           \
   static void* _hash_mur_##type##_##field##_init(void *d, void *space, unsigned spacelen) \
   { \
     struct _hash_murmur_state_##type##_##field *s = (struct _hash_murmur_state_##type##_##field *)space; \
-    s->h = 0; \
-    return space; \
-  } \
+    s->h = 0;                                                                  \
+    s->count = 0;                                                              \
+    return space;                                                              \
+  }                                                                            \
   static void _hash_mur_##type##_##field##_update(void *s, const unsigned char *in, size_t inlen, void *d) \
   { \
     struct _hash_murmur_state_##type##_##field *st = (struct _hash_murmur_state_##type##_##field *)s; \
@@ -471,18 +473,21 @@ typedef struct _hash_generic_hash_s {
       k *= c2; \
       h ^= k; \
     } \
-    h ^= inlen; \
-    h ^= h >> 16; \
-    h *= 0x85ebca6b; \
-    h ^= h >> 13; \
-    h *= 0xc2b2ae35; \
-    h ^= h >> 16; \
     st->h = h; \
+    st->count += inlen; \
   } \
   HASH_TYPE _hash_mur_##type##_##field##_final(void *s, void *d) \
   { \
 	  struct _hash_murmur_state_##type##_##field *st = (struct _hash_murmur_state_##type##_##field *)s; \
-	  return st->h; \
+	  uint32_t h; \
+	  h = st->h; \
+	  h ^= st->count; \
+	  h ^= h >> 16; \
+	  h *= 0x85ebca6b; \
+	  h ^= h >> 13; \
+	  h *= 0xc2b2ae35; \
+	  h ^= h >> 16; \
+	  return h; \
   } \
   static _hash_generic_hash_t _hash_murmur_##type##_##field = { \
 	 .hash_init = &_hash_mur_##type##_##field##_init, \
