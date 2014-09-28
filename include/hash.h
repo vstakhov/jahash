@@ -438,7 +438,7 @@ do {                                                                           \
   _hash_node_t *_node = (head)->buckets,                                       \
       *_end = (head)->buckets + (head)->num_buckets;                           \
   HASH_LOCK_READ(head);                                                        \
-  for (; !_finished && _node != _end; _node ++) {                              \
+  for (; _node != _end; _node ++) {                                            \
     if (_node->first) {                                                        \
       HASH_LOCK_NODE_WRITE(head, _node);                                       \
       struct type *_cur = (struct type *)_node->first, *_tmp = NULL;           \
@@ -557,7 +557,7 @@ typedef struct _hash_generic_hash_s {
   b -= c; b -= a; b ^= ( a << 10 );                                            \
   c -= a; c -= b; c ^= ( b >> 15 );                                            \
 }
-#define HASH_INIT_JEN(type, field) \
+#define HASH_INIT_JENKINS(type, field) \
   struct _hash_jen_##type##_##field##_state { \
     uint32_t h; \
     uint32_t init; \
@@ -622,7 +622,7 @@ typedef struct _hash_generic_hash_s {
     struct _hash_jen_##type##_##field##_state *st = (struct _hash_jen_##type##_##field##_state *)s; \
     return st->h; \
   } \
-  static _hash_generic_hash_t _hash_jenkins_##type##_##field## = { \
+  static _hash_generic_hash_t _hash_jenkins_##type##_##field = { \
     .hash_init = &_hash_jen_##type##_##field##_init, \
     .hash_update = &_hash_jen_##type##_##field##_update, \
     .hash_final = &_hash_jen_##type##_##field##_final, \
