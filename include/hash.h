@@ -408,12 +408,57 @@ do {                                                                           \
 
 
 #define HASH_ITERATE(head, type, field, iter, elt)                             \
-    for ((iter).bucket = (head)->buckets;                                       \
+    for ((iter).bucket = (head)->buckets;                                      \
       (iter).bucket != (head)->buckets + (head)->num_buckets; ++(iter).bucket) \
-      if ((iter).bucket->first != NULL)                                         \
+      if ((iter).bucket->first != NULL)                                        \
         for ((elt) = (iter).e = (struct type *)(iter).bucket->first;           \
             (iter).e != NULL;                                                  \
             (elt) = (iter).e = (iter).e->field.next)                           \
+
+#define HASH_ITERATE_FUNC(head, type, field, func, data) do {                  \
+  int _finished = 0;                                                           \
+  _hash_node_t *_node = (head)->buckets,                                       \
+      *_end = (head)->buckets + (head)->num_buckets;                           \
+  HASH_LOCK_READ(head);                                                        \
+  for (; !_finished && _node != _end; _node ++) {                              \
+    if (_node->first) {                                                        \
+      HASH_LOCK_NODE_READ(head, _node);                                        \
+      struct type *_cur = (struct type *)_node->first;                         \
+      while (_cur != NULL && !_finished) {                                     \
+        if (!(func)(_cur, data)) _finished = 1;                                \
+        _cur = _cur->field.next;                                               \
+      }                                                                        \
+      HASH_UNLOCK_NODE_READ(head, _node);                                      \
+    }                                                                          \
+  }                                                                            \
+  HASH_UNLOCK_READ(head);                                                      \
+} while(0)
+
+#define HASH_FILTER_FUNC(head, type, field, func, free_func, data) do {        \
+  _hash_node_t *_node = (head)->buckets,                                       \
+      *_end = (head)->buckets + (head)->num_buckets;                           \
+  HASH_LOCK_READ(head);                                                        \
+  for (; !_finished && _node != _end; _node ++) {                              \
+    if (_node->first) {                                                        \
+      HASH_LOCK_NODE_WRITE(head, _node);                                       \
+      struct type *_cur = (struct type *)_node->first, *_tmp = NULL;           \
+      while (_cur != NULL) {                                                   \
+        if (!(func)(_cur, data)) {                                             \
+          if (_cur == _node->first) _node->first = _cur->field.next;           \
+          else _tmp->field.next = _cur->field.next;                            \
+          _cur = _cur->field.next;                                             \
+          (free_func)(_cur, data);                                             \
+        }                                                                      \
+        else {                                                                 \
+          _tmp = _cur;                                                         \
+          _cur = _cur->field.next;                                             \
+        }                                                                      \
+      }                                                                        \
+      HASH_UNLOCK_NODE_WRITE(head, _node);                                     \
+    }                                                                          \
+  }                                                                            \
+  HASH_UNLOCK_READ(head);                                                      \
+} while(0)
 
 typedef struct _hash_generic_hash_s {
   void* (*hash_init)(void *d, void *space, unsigned spacelen);
@@ -651,12 +696,12 @@ typedef struct _hash_filter_data_s {
   };                                                                           \
 
 
-#define HASH_GENERATE_INT(type, field, keyfield)                              \
-	HASH_INIT_JENKINS(type, field);                                              \
-	HASH_GENERATE_INT_GENERIC(type, field, keyfield, jenkins);                   \
-  HASH_GENERATE_OPS(type, field, keyfield,                                     \
-          &_int_hash_op_##type##_##field##_hash,                              \
-          &_int_hash_op_##type##_##field##_cmp,                               \
+#define HASH_GENERATE_INT(type, field, keyfield)                               \
+	HASH_INIT_JENKINS(type, field);                                            \
+	HASH_GENERATE_INT_GENERIC(type, field, keyfield, jenkins);                 \
+    HASH_GENERATE_OPS(type, field, keyfield,                                   \
+          &_int_hash_op_##type##_##field##_hash,                               \
+          &_int_hash_op_##type##_##field##_cmp,                                \
           &_hash_int_data_##type##_##field_glob)
 
 #define HASH_GENERATE_INT_GENERIC(type, field, keyfield, hash_type)           \
