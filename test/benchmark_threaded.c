@@ -104,7 +104,7 @@ int main(int argc, char **argv)
 
   t = 0;
   HASH_INIT(&head, hnode, hh);
-  HASH_INIT_PTREAD_MUTEX(&head, hnode, hh);
+  HASH_INIT_PTHREAD_RWLOCK(&head, hnode, hh);
 
   for (j = 0; j < k; j ++) {
     randomize_input(a, n, b, r, p);

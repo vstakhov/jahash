@@ -34,7 +34,7 @@
  * Define read-write locks for both nodes an resize operations. Suitable for
  * read mostly hash tables
  */
-#define HASH_INIT_PTREAD_RWLOCK(head, type, field) do {                        \
+#define HASH_INIT_PTHREAD_RWLOCK(head, type, field) do {                        \
     (head)->ops->lock_init = &_hash_pthread_rwlock_init_##type##_##field;      \
     (head)->ops->lock_read_lock = &_hash_pthread_rwlock_rlock_##type##_##field; \
     (head)->ops->lock_write_lock = &_hash_pthread_rwlock_wlock_##type##_##field; \
@@ -58,7 +58,7 @@
  * have equally distributed read and write operations probability. This is due
  * to priority propagation that makes read-write locks very expensive for writers
  */
-#define HASH_INIT_PTREAD_MUTEX(head, type, field) do {                         \
+#define HASH_INIT_PTHREAD_MUTEX(head, type, field) do {                         \
     (head)->ops->lock_init = &_hash_pthread_rwlock_init_##type##_##field;      \
     (head)->ops->lock_read_lock = &_hash_pthread_rwlock_rlock_##type##_##field; \
     (head)->ops->lock_write_lock = &_hash_pthread_rwlock_wlock_##type##_##field; \
