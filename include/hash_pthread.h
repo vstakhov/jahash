@@ -26,6 +26,23 @@
 #define HASH_PTHREAD_H_
 
 #include <pthread.h>
+
+#ifndef _HU
+# ifdef __GNUC__
+#   define _HU(x) _HU_ ## x __attribute__((__unused__))
+# else
+#   define _HU(x) _HU_ ## x
+# endif
+#endif
+
+#ifndef _HU_FUNCTION
+# ifdef __GNUC__
+#   define _HU_FUNCTION(x) __attribute__((__unused__)) x
+# else
+#   define _HU_FUNCTION(x) x
+# endif
+#endif
+
 /*
  * This file defines locking primitives for the hash table using pthreads
  */
@@ -81,44 +98,44 @@
  * Generate all pthread helpers for the specified hash type
  */
 #define HASH_PTHREAD_GENERATE(type, field)                                     \
-  static void* _hash_pthread_mtx_init_##type##_##field(void *d) {              \
+  static void* _HU_FUNCTION(_hash_pthread_mtx_init_##type##_##field)(void* _HU(d)) {              \
     pthread_mutex_t *mtx;                                                      \
     mtx = malloc(sizeof(*mtx));                                                \
     if (mtx != NULL) pthread_mutex_init(mtx, NULL);                            \
     return (void *)mtx;                                                        \
   }                                                                            \
-  static void _hash_pthread_mtx_lock_##type##_##field(void *m, void *d) {      \
+  static void _HU_FUNCTION(_hash_pthread_mtx_lock_##type##_##field)(void *m, void* _HU(d)) {      \
     pthread_mutex_t *mtx = (pthread_mutex_t *)m;                               \
     pthread_mutex_lock(mtx);                                                   \
   }                                                                            \
-  static void _hash_pthread_mtx_unlock_##type##_##field(void *m, void *d) {    \
+  static void _HU_FUNCTION(_hash_pthread_mtx_unlock_##type##_##field)(void *m, void* _HU(d)) {    \
     pthread_mutex_t *mtx = (pthread_mutex_t *)m;                               \
     pthread_mutex_unlock(mtx);                                                 \
   }                                                                            \
-  static void _hash_pthread_mtx_dtor_##type##_##field(void *m, void *d) {      \
+  static void _HU_FUNCTION(_hash_pthread_mtx_dtor_##type##_##field)(void *m, void* _HU(d)) {      \
     pthread_mutex_t *mtx = (pthread_mutex_t *)m;                               \
     pthread_mutex_destroy(mtx);                                                \
     free(mtx);                                                                 \
   }                                                                            \
-  static void* _hash_pthread_rwlock_init_##type##_##field(void *d) {           \
+  static void* _HU_FUNCTION(_hash_pthread_rwlock_init_##type##_##field)(void* _HU(d)) {           \
     pthread_rwlock_t *rwlck;                                                   \
     rwlck = malloc(sizeof(*rwlck));                                            \
     if (rwlck != NULL) pthread_rwlock_init(rwlck, NULL);                       \
     return (void *)rwlck;                                                      \
   }                                                                            \
-  static void _hash_pthread_rwlock_rlock_##type##_##field(void *m, void *d) {  \
+  static void _HU_FUNCTION(_hash_pthread_rwlock_rlock_##type##_##field)(void *m, void* _HU(d)) {  \
     pthread_rwlock_t *rwlck = (pthread_rwlock_t *)m;                           \
     pthread_rwlock_rdlock(rwlck);                                              \
   }                                                                            \
-  static void _hash_pthread_rwlock_wlock_##type##_##field(void *m, void *d) {  \
+  static void _HU_FUNCTION(_hash_pthread_rwlock_wlock_##type##_##field)(void *m, void* _HU(d)) {  \
     pthread_rwlock_t *rwlck = (pthread_rwlock_t *)m;                           \
     pthread_rwlock_wrlock(rwlck);                                              \
   }                                                                            \
-  static void _hash_pthread_rwlock_unlock_##type##_##field(void *m, void *d) { \
+  static void _HU_FUNCTION(_hash_pthread_rwlock_unlock_##type##_##field)(void *m, void* _HU(d)) { \
     pthread_rwlock_t *rwlck = (pthread_rwlock_t *)m;                           \
     pthread_rwlock_unlock(rwlck);                                              \
   }                                                                            \
-  static void _hash_pthread_rwlock_dtor_##type##_##field(void *m, void *d) {   \
+  static void _HU_FUNCTION(_hash_pthread_rwlock_dtor_##type##_##field)(void *m, void* _HU(d)) {   \
     pthread_rwlock_t *rwlck = (pthread_rwlock_t *)m;                           \
     pthread_rwlock_destroy(rwlck);                                             \
     free(rwlck);                                                               \
