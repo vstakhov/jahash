@@ -660,6 +660,7 @@ typedef struct _hash_filter_data_s {
 } _hash_filter_data_t;
 
 
+#ifndef _HASH_USE_XXHASH
 #define HASH_GENERATE_STR(type, field, keyfield)                              \
 	HASH_INIT_MURMUR(type, field);                                              \
 	HASH_GENERATE_STR_GENERIC(type, field, keyfield, murmur);                           \
@@ -667,6 +668,15 @@ typedef struct _hash_filter_data_s {
         &_str_hash_op_##type##_##field##_hash,                                \
         &_str_hash_op_##type##_##field##_cmp,                                 \
         &_hash_string_data_##type##_##field_glob)
+#else
+#define HASH_GENERATE_STR(type, field, keyfield)                               \
+  HASH_INIT_XXHASH(type, field);                                               \
+  HASH_GENERATE_STR_GENERIC(type, field, keyfield, xxhash);                    \
+  HASH_GENERATE_OPS(type, field, keyfield,                                     \
+        &_str_hash_op_##type##_##field##_hash,                                 \
+        &_str_hash_op_##type##_##field##_cmp,                                  \
+        &_hash_string_data_##type##_##field_glob)
+#endif
 
 #define HASH_GENERATE_STR_GENERIC(type, field, keyfield, hash_type)           \
   static HASH_TYPE _HU_FUNCTION(_str_hash_op_##type##_##field##_hash)(const struct type *e, void *d) \
