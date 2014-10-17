@@ -137,13 +137,10 @@ static inline U64 XXH_swap64 (U64 x) {
     int memsize;                                                               \
     char memory[16];                                                           \
   };                                                                           \
-  static void* _HU_FUNCTION(_hash_xxh_##type##_##field##_init)(void *d, void *space, unsigned _HU(spacelen)) \
+  static void* _HU_FUNCTION(_hash_xxh_##type##_##field##_init)(void *d, unsigned seed, \
+    void *space, unsigned _HU(spacelen)) \
   { \
     struct _hash_xxh_state_##type##_##field *s = (struct _hash_xxh_state_##type##_##field *)space; \
-    U32 seed = 0xdeadbeef; \
-    if (d != NULL) { \
-      seed = *(U32*)d; \
-    } \
     s->seed = seed; \
     s->v1 = seed + PRIME32_1 + PRIME32_2; \
     s->v2 = seed + PRIME32_2; \

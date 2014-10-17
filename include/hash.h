@@ -90,6 +90,10 @@ typedef unsigned char uint8_t;
 #include <stdint.h>
 #endif
 
+#ifndef HASH_RANDOM_SEED
+#define HASH_RANDOM_SEED rand
+#endif
+
 /* initial number of buckets */
 #define HASH_INITIAL_NUM_BUCKETS 32      /* initial number of buckets        */
 #define HASH_INITIAL_NUM_BUCKETS_LOG2 5  /* lg2 of initial number of buckets */
@@ -103,10 +107,11 @@ typedef unsigned char uint8_t;
  * Operations structure, defines all common functions aplicable to a hash table
  */
 #define HASH_OPS(type, field)                                                 \
-struct  _hash_ops_##type##_##field {                                         \
-  int (*hash_cmp)(const struct type *a, const struct type *b, void *d);    \
+struct  _hash_ops_##type##_##field {                                           \
+  int (*hash_cmp)(const struct type *a, const struct type *b, void *d);        \
   void *cmpd;                                                                  \
-  HASH_TYPE (*hash_func)(const struct type *a, void *d);                     \
+  HASH_TYPE (*hash_func)(const struct type *a, void *d);                       \
+  void (*hash_init)(void *d);                                                  \
   void *hashd;                                                                 \
   void * (*lock_init)(void *d);                                                \
   void (*lock_read_lock)(void *l, void *d);                                    \
@@ -154,7 +159,7 @@ typedef struct _hash_node_s {
 #define HASH_HEAD(name, type, field)                                           \
   struct name {                                                                \
    _hash_node_t *buckets;                                                      \
-   struct _hash_ops_##type##_##field *ops;                                   \
+   struct _hash_ops_##type##_##field *ops;                                     \
    unsigned num_buckets, log2_num_buckets;                                    \
    unsigned ideal_chain_maxlen;                                               \
    unsigned nonideal_items;                                                   \
@@ -355,12 +360,13 @@ typedef struct _hash_node_s {
 } while(0)
 
 /* Private methods */
-#define HASH_MAKE_TABLE(head) do {                                            \
+#define HASH_MAKE_TABLE(head) do {                                             \
   (head)->num_buckets = HASH_INITIAL_NUM_BUCKETS;                              \
-  (head)->log2_num_buckets = HASH_INITIAL_NUM_BUCKETS_LOG2;                   \
+  (head)->log2_num_buckets = HASH_INITIAL_NUM_BUCKETS_LOG2;                    \
   HASH_ALLOC_NODES((head), (head)->buckets, (head)->num_buckets);              \
   if ((head)->ops->lock_init) (head)->resize_lock = (head)->ops->lock_init((head)->ops->lockd); \
-  (head)->signature = HASH_SIGNATURE;                                         \
+  if ((head)->ops->hash_init) (head)->ops->hash_init((head)->ops->hashd);      \
+  (head)->signature = HASH_SIGNATURE;                                          \
 } while(0)
 
 #define HASH_ROUNDUP32(x)                                                     \
@@ -477,9 +483,10 @@ do {                                                                           \
 } while(0)
 
 typedef struct _hash_generic_hash_s {
-  void* (*hash_init)(void *d, void *space, unsigned spacelen);
+  void* (*hash_init)(void *d, unsigned seed, void *space, unsigned spacelen);
   void (*hash_update)(void *s, const unsigned char *in, size_t inlen, void *d);
   HASH_TYPE (*hash_final)(void *s, void *d);
+  unsigned seed;
   void *d;
 } _hash_generic_hash_t;
 /*
@@ -495,10 +502,11 @@ typedef struct _hash_generic_hash_s {
     uint32_t h;                                                                \
     size_t count;                                                              \
   };                                                                           \
-  static void* _HU_FUNCTION(_hash_mur_##type##_##field##_init)(void *_HU(d), void *space, unsigned _HU(spacelen)) \
+  static void* _HU_FUNCTION(_hash_mur_##type##_##field##_init)(void *_HU(d),   \
+      unsigned seed, void *space, unsigned _HU(spacelen))                      \
   { \
     struct _hash_murmur_state_##type##_##field *s = (struct _hash_murmur_state_##type##_##field *)space; \
-    s->h = 0;                                                                  \
+    s->h = seed;                                                               \
     s->count = 0;                                                              \
     return space;                                                              \
   }                                                                            \
@@ -578,10 +586,11 @@ typedef struct _hash_generic_hash_s {
     uint32_t h; \
     uint32_t init; \
   }; \
-  static void* _HU_FUNCTION(_hash_jen_##type##_##field##_init)(void * _HU(d), void *space, unsigned _HU(spacelen)) \
+  static void* _HU_FUNCTION(_hash_jen_##type##_##field##_init)(void * _HU(d),  \
+    unsigned seed, void *space, unsigned _HU(spacelen))                        \
   { \
     struct _hash_jen_##type##_##field##_state *s = (struct _hash_jen_##type##_##field##_state *)space; \
-    s->h = 0xfeedbeef; \
+    s->h = seed; \
     s->init = 0x9e3779b9; \
     return space; \
   } \
@@ -684,9 +693,9 @@ typedef struct _hash_filter_data_s {
     _hash_filter_data_t *dt = (_hash_filter_data_t *)d;                          \
     unsigned char space[HASH_SPACE_SIZE];                                     \
     void *s;                                                                   \
-    const unsigned char *key = (const unsigned char *)e->keyfield;         \
+    const unsigned char *key = (const unsigned char *)e->keyfield;             \
     HASH_TYPE hash, i;                                                         \
-    s = dt->ht->hash_init(dt->ht->d, space, sizeof(space));                   \
+    s = dt->ht->hash_init(dt->ht->d, dt->ht->seed, space, sizeof(space));      \
     if (!dt->filter_func) dt->ht->hash_update(s, key, strlen((const char*)key), \
         dt->ht->d);                                                             \
     else {                                                                     \
@@ -725,7 +734,7 @@ typedef struct _hash_filter_data_s {
 #define HASH_GENERATE_INT(type, field, keyfield)                               \
 	HASH_INIT_JENKINS(type, field);                                            \
 	HASH_GENERATE_INT_GENERIC(type, field, keyfield, jenkins);                 \
-  HASH_GENERATE_OPS(type, field, keyfield,                                   \
+  HASH_GENERATE_OPS(type, field, keyfield,                                      \
           &_int_hash_op_##type##_##field##_hash,                               \
           &_int_hash_op_##type##_##field##_cmp,                                \
           &_hash_int_data_##type##_##field_glob)
@@ -733,14 +742,14 @@ typedef struct _hash_filter_data_s {
 #define HASH_GENERATE_INT_GENERIC(type, field, keyfield, hash_type)           \
   static HASH_TYPE _HU_FUNCTION(_int_hash_op_##type##_##field##_hash)(const struct type *e, void *d) \
   {                                                                            \
-    _hash_filter_data_t *dt = (_hash_filter_data_t *)d;                          \
-    unsigned char space[HASH_SPACE_SIZE];                                     \
+    _hash_filter_data_t *dt = (_hash_filter_data_t *)d;                        \
+    unsigned char space[HASH_SPACE_SIZE];                                      \
     void *s;                                                                   \
-    const unsigned char *key = (const unsigned char *)&e->keyfield;         \
+    const unsigned char *key = (const unsigned char *)&e->keyfield;            \
     HASH_TYPE hash, i;                                                         \
-    s = dt->ht->hash_init(dt->ht->d, space, sizeof(space));                   \
-    dt->ht->hash_update(s, key, sizeof(int), dt->ht->d);                      \
-    return dt->ht->hash_final(s, dt->ht->d);                                    \
+    s = dt->ht->hash_init(dt->ht->d, dt->ht->seed, space, sizeof(space));      \
+    dt->ht->hash_update(s, key, sizeof(int), dt->ht->d);                       \
+    return dt->ht->hash_final(s, dt->ht->d);                                   \
   }                                                                            \
   static int _HU_FUNCTION(_int_hash_op_##type##_##field##_cmp)(const struct type *e1, const struct type *e2, void* _HU(d)) \
   {                                                                            \
@@ -756,23 +765,29 @@ typedef struct _hash_filter_data_s {
 /*
  * Generic operations generator
  */
-#define HASH_GENERATE_OPS(type, field, keyfield, hashf, cmpf, d)              \
-		static HASH_OPS(type, field) _hash_ops_##type##_##field_glob = {         \
+#define HASH_GENERATE_OPS(type, field, keyfield, hashf, cmpf, d)               \
+		static void _HU_FUNCTION(_hash_op_##type##_##field##_init_hash)(void *ud)  \
+		{                                                                          \
+		  _hash_filter_data_t *dt = (_hash_filter_data_t *)ud;                     \
+		  dt->ht->seed = HASH_RANDOM_SEED();                                       \
+		}                                                                          \
+		static HASH_OPS(type, field) _hash_ops_##type##_##field_glob = {           \
 		  .hash_func = (hashf),                                                    \
 		  .hash_cmp = (cmpf),                                                      \
+		  .hash_init = &_hash_op_##type##_##field##_init_hash,                     \
 		  .hashd = (d)                                                             \
 		};                                                                         \
     static struct type* _HU_FUNCTION(_hash_op_##type##_##field##_find)(void *head, void *k) \
     {                                                                          \
-      struct type s, *p;                                                      \
+      struct type s, *p;                                                       \
       HASH_HEAD(, type, field) *h;                                             \
       DECLTYPE_ASSIGN((s.keyfield), k);                                        \
       DECLTYPE_ASSIGN(h, head);                                                \
       HASH_FIND_ELT(h, type, field, &s, p);                                    \
-      return p;                                                               \
+      return p;                                                                \
     }                                                                          \
     static void _HU_FUNCTION(_hash_op_##type##_##field##_delete_node)(void (*free_func)(struct type *p), struct type *p) { \
-       if (free_func != NULL) free_func(p);                                   \
+       if (free_func != NULL) free_func(p);                                    \
     }
 
 #define HASH_FIND(head, type, field, key)                                     \
