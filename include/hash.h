@@ -253,11 +253,11 @@ typedef struct _hash_node_s {
 } while(0)
 
 /* Basic ops */
-#define HASH_INSERT(head, type, field, elm) do {                              \
-  if ((head)->buckets == NULL) HASH_MAKE_TABLE(head);                              \
+#define HASH_INSERT(head, type, field, elm) do {                               \
+  if ((head)->buckets == NULL) HASH_MAKE_TABLE(head);                          \
   HASH_TYPE _hv;                                                               \
-  _hv = (head)->ops->hash_func((elm), (head)->ops->hashd);                        \
-  (elm)->field.hv = _hv;                                                    \
+  _hv = (head)->ops->hash_func((elm), (head)->ops->hashd);                     \
+  (elm)->field.hv = _hv;                                                       \
   HASH_LOCK_READ(head);                                                        \
   _hash_node_t *bkt = HASH_FIND_BKT((head)->buckets, (head)->num_buckets, _hv); \
   HASH_LOCK_NODE_WRITE(head, bkt);                                             \
@@ -274,19 +274,19 @@ typedef struct _hash_node_s {
   }                                                                            \
 } while(0)
 
-#define HASH_FIND_ELT(head, type, field, elm, found) do {                     \
+#define HASH_FIND_ELT(head, type, field, elm, found) do {                      \
   if ((head)->buckets == NULL) (found) = NULL;                                 \
   else {                                                                       \
 	  HASH_TYPE _hv;                                                             \
-	  struct type *_telt;                                                       \
-	  _hv = (head)->ops->hash_func((elm), (head)->ops->hashd);                      \
+	  struct type *_telt;                                                        \
+	  _hv = (head)->ops->hash_func((elm), (head)->ops->hashd);                   \
 	  HASH_LOCK_READ(head);                                                      \
 	  _hash_node_t *bkt = HASH_FIND_BKT((head)->buckets, (head)->num_buckets, _hv); \
 	  HASH_LOCK_NODE_READ(head, bkt);                                            \
-	  _telt = (struct type *)bkt->first;                                       \
+	  _telt = (struct type *)bkt->first;                                         \
 	  HASH_UNLOCK_READ(head);                                                    \
 	  while(_telt != NULL && (head)->ops->hash_cmp((elm), _telt, (head)->ops->hashd) != 0) \
-	    _telt = _telt->field.next;                                             \
+	    _telt = _telt->field.next;                                               \
 	  (found) = _telt;                                                           \
 	  HASH_UNLOCK_NODE_READ((head), bkt);                                        \
   }                                                                            \
