@@ -824,7 +824,7 @@ typedef struct _hash_filter_data_s {
     {                                                                          \
       struct type s, *p;                                                       \
       HASH_HEAD(, type, field) *h;                                             \
-      DECLTYPE_ASSIGN((s.keyfield), k);                                        \
+      memcpy((&s.keyfield), k, sizeof(s.keyfield));                            \
       DECLTYPE_ASSIGN(h, head);                                                \
       HASH_FIND_ELT(h, type, field, &s, p);                                    \
       return p;                                                                \
