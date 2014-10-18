@@ -38,14 +38,14 @@ struct {                                                                       \
 struct name {                                                                  \
    struct _hash_ops_##type##_##field *ops;                                     \
    struct type *nodes;                                                         \
-   unsigned n_buckets, size, n_occupied, upper_bound;                          \
+   unsigned n_buckets, n_occupied, upper_bound;                                \
    unsigned need_expand;                                                       \
    unsigned generation;                                                        \
 }
 
 /* Basic ops */
 #define _HASH_NODE_EMPTY(node, field) (((node)->field.flags & 0x1) == 0)
-#define _HASH_NODE_ERASE(node, field) ((node)->field.flags |= ~0x1)
+#define _HASH_NODE_ERASE(node, field) ((node)->field.flags &= ~0x1)
 #define _HASH_NODE_FILL(node, field) ((node)->field.flags |= 0x1)
 
 /*
@@ -82,12 +82,45 @@ struct name {                                                                  \
   }                                                                            \
 } while(0)
 
+#define HASH_DELETE_ELT(head, type, field, elm) do {                           \
+  if ((head)->buckets != NULL) {                                               \
+    struct type *_h;                                                           \
+    HASH_FIND_BKT(head, field, _hv, _h);                                       \
+    if (!_HASH_NODE_EMPTY(_h, field)) {                                        \
+      _HASH_NODE_ERASE(_h,field);                                              \
+      (head)->n_occupied --;                                                   \
+    }                                                                          \
+  }                                                                            \
+} while(0)
+
+#define HASH_CLEANUP_NODES(head, type, field, free_func) do {                  \
+  if ((head)->nodes != NULL) {                                                 \
+      struct type *_bkt;                                                       \
+      for (unsigned _i = 0; _i < (head)->n_buckets; _i ++) {                   \
+        _bkt = &(head)->nodes[_i];                                             \
+        if(_HASH_NODE_EMPTY(_bkt, field)) continue;                            \
+        if ((free_func) != NULL) _hash_op_##type##_##field##_delete_node((free_func), _bkt); \
+        _HASH_NODE_ERASE(_bkt, field);                                         \
+      }                                                                        \
+      (head)->n_occupied = 0;                                                  \
+    }                                                                          \
+} while(0)
+
+#define HASH_DESTROY(head, type, field, free_func) do {                        \
+  HASH_CLEANUP_NODES(head, type, field, free_func);                            \
+  HASH_FREE_NODES((head), (head)->nodes, (head)->n_buckets);                   \
+  (head)->nodes = NULL;                                                        \
+  (head)->n_buckets = 0;                                                       \
+  (head)->n_occupied = 0;                                                      \
+  (head)->generation = 0;                                                      \
+} while(0)
+
 /*
  * Find hash value in the nodes using quadratic probing
  * The size of hash table *MUST* be power of two as c1=c2=1/2
  */
 #define HASH_FIND_BKT(head, field, h, bkt) do {                                \
-  HASH_TYPE _idx, _step = 0, _mask, _limit;                                    \
+  unsigned _idx, _step = 0, _mask, _limit;                                     \
   _mask = (head)->n_buckets - 1;                                               \
   _limit = _mask + 1;                                                          \
   _idx = (h) & _mask;                                                          \
@@ -110,7 +143,8 @@ struct name {                                                                  \
         /* XXX: hash table is full */                                          \
         assert(0);                                                             \
       }                                                                        \
-      _idx = ((h) + (_step*_step + _step) / 2) & _mask;                        \
+      _idx = ((h) + (_step*_step + _step) / 2) & _mask;                    \
+      /*_idx = ((_idx) + _step) & _mask; */                                      \
       _h = &(head)->nodes[_idx];                                               \
     }                                                                          \
   }                                                                            \
@@ -150,7 +184,6 @@ do {                                                                           \
     HASH_FREE_NODES(head, old_nodes, _old_num);                                \
     (head)->generation ++;                                                     \
     (head)->upper_bound = ((head)->n_buckets * _HASH_UPPER_BOUND + 0.5);       \
-    (head)->n_occupied = _old_num;                                             \
     }                                                                          \
     else (head)->nodes = old_nodes;                                            \
   }                                                                            \

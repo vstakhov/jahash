@@ -22,6 +22,7 @@
  */
 
 #include "hash_closed.h"
+#include "hash_xxhash.h"
 #include "hash.h"
 #include <stdio.h>
 #include <stdlib.h>
