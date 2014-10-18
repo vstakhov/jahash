@@ -812,7 +812,7 @@ typedef struct _hash_filter_data_s {
 		static void _HU_FUNCTION(_hash_op_##type##_##field##_init_hash)(void *ud)  \
 		{                                                                          \
 		  _hash_filter_data_t *dt = (_hash_filter_data_t *)ud;                     \
-		  dt->ht->seed = HASH_RANDOM_SEED();                                       \
+		  if (dt) dt->ht->seed = HASH_RANDOM_SEED();                               \
 		}                                                                          \
 		static HASH_OPS(type, field) _hash_ops_##type##_##field_glob = {           \
 		  .hash_func = (hashf),                                                    \
