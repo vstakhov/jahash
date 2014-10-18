@@ -23,10 +23,8 @@
 #ifndef HASH_CLOSED_H_
 #define HASH_CLOSED_H_
 
-#include <assert.h>
-
 #define _HASH_USE_CLOSED 1
-#define _HASH_UPPER_BOUND 0.77
+#define _HASH_UPPER_BOUND 0.6
 /* No need to store anything in the value itself */
 #define HASH_ENTRY(type)                                                       \
 struct {                                                                       \
@@ -61,7 +59,7 @@ struct name {                                                                  \
   }                                                                            \
   _hv = (head)->ops->hash_func((elm), (head)->ops->hashd);                     \
   (elm)->field.hv = _hv;                                                       \
-  HASH_FIND_BKT(head, field, _hv, _h);                                         \
+  HASH_FIND_BKT(head, type, field, _hv, _h);                                   \
   memcpy(_h, elm, sizeof(*_h));                                                \
   _HASH_NODE_FILL(_h, field);                                                  \
   (head)->n_occupied ++;                                                       \
@@ -74,18 +72,17 @@ struct name {                                                                  \
   if ((head)->nodes == NULL) (found) = NULL;                                   \
   else {                                                                       \
     HASH_TYPE _hv;                                                             \
-    struct type *_h = (found);                                                 \
+    (found) = (elm);                                                           \
     _hv = (head)->ops->hash_func((elm), (head)->ops->hashd);                   \
-    HASH_FIND_BKT(head, field, _hv, _h);                                       \
-    if (_HASH_NODE_EMPTY(_h, field)) (found) = NULL;                           \
-    else (found) = _h;                                                         \
+    HASH_FIND_BKT(head, type, field, _hv, found);                              \
+    if (_HASH_NODE_EMPTY(found, field)) (found) = NULL;                        \
   }                                                                            \
 } while(0)
 
 #define HASH_DELETE_ELT(head, type, field, elm) do {                           \
   if ((head)->buckets != NULL) {                                               \
     struct type *_h;                                                           \
-    HASH_FIND_BKT(head, field, _hv, _h);                                       \
+    HASH_FIND_BKT(head, type, field, _hv, _h);                                 \
     if (!_HASH_NODE_EMPTY(_h, field)) {                                        \
       _HASH_NODE_ERASE(_h,field);                                              \
       (head)->n_occupied --;                                                   \
@@ -119,36 +116,32 @@ struct name {                                                                  \
  * Find hash value in the nodes using quadratic probing
  * The size of hash table *MUST* be power of two as c1=c2=1/2
  */
-#define HASH_FIND_BKT(head, field, h, bkt) do {                                \
+#define HASH_FIND_BKT(head, type, field, h, bkt) do {                          \
   unsigned _idx, _step = 0, _mask, _limit;                                     \
+  struct type *_cur;                                                           \
   _mask = (head)->n_buckets - 1;                                               \
   _limit = _mask + 1;                                                          \
   _idx = (h) & _mask;                                                          \
-  _h = &(head)->nodes[_idx];                                                   \
-  if (!_HASH_NODE_EMPTY(_h, field)) {                                          \
+  _cur = &(head)->nodes[_idx];                                                 \
+  if (!_HASH_NODE_EMPTY(_cur, field)) {                                        \
     /* We need to find the place for inserting */                              \
     for(;;) {                                                                  \
-    	++_step;                                                                 \
-      if (_HASH_NODE_EMPTY(_h, field)) {                                       \
+      if (_HASH_NODE_EMPTY(_cur, field)) {                                     \
         break;                                                                 \
       }                                                                        \
-      else if (_h->field.hv == (h)) {                                          \
+      else if (_cur->field.hv == (h)) {                                        \
         /* Need to compare */                                                  \
-        if ((head)->ops->hash_cmp((bkt), _h, (head)->ops->hashd) == 0) {       \
-          /* XXX: maybe free value here */                                     \
+        if ((head)->ops->hash_cmp((bkt), _cur, (head)->ops->hashd) == 0) {     \
           break;                                                               \
         }                                                                      \
       }                                                                        \
-      else if (_step == _limit) {                                              \
-        /* XXX: hash table is full */                                          \
-        assert(0);                                                             \
-      }                                                                        \
-      _idx = ((h) + (_step*_step + _step) / 2) & _mask;                    \
-      /*_idx = ((_idx) + _step) & _mask; */                                      \
-      _h = &(head)->nodes[_idx];                                               \
+      ++_step;                                                                 \
+      _idx = ((h) + (_step*_step + _step) / 2) & _mask;                        \
+      /*_idx = ((_idx) + _step) & _mask; */                                    \
+      _cur = &(head)->nodes[_idx];                                             \
     }                                                                          \
   }                                                                            \
-  (bkt) = _h;                                                                  \
+  (bkt) = _cur;                                                                \
 } while(0)
 
 #define HASH_ALLOC_NODES(head, nodes, size) do {                               \
@@ -175,15 +168,15 @@ do {                                                                           \
     if ((head)->nodes != NULL) {                                               \
     (head)->n_buckets = _new_num;                                              \
     for (unsigned _i = 0; _i < _old_num; _i ++) {                              \
-      struct type *_h, *_cur;                                                  \
-      _cur = &old_nodes[_i];                                                   \
-      if(_HASH_NODE_EMPTY(_cur, field)) continue;                              \
-      HASH_FIND_BKT(head, field, _cur->field.hv, _h);                          \
-      memcpy(_h, _cur, sizeof(*_h));                                           \
+      struct type *_h, *_onode;                                                \
+      _onode = &old_nodes[_i];                                                 \
+      if(_HASH_NODE_EMPTY(_onode, field)) continue;                            \
+      HASH_FIND_BKT(head, type, field, _onode->field.hv, _h);                  \
+      memcpy(_h, _onode, sizeof(*_h));                                         \
     }                                                                          \
     HASH_FREE_NODES(head, old_nodes, _old_num);                                \
     (head)->generation ++;                                                     \
-    (head)->upper_bound = ((head)->n_buckets * _HASH_UPPER_BOUND + 0.5);       \
+    HASH_UPPER_BOUND(head);                                                    \
     }                                                                          \
     else (head)->nodes = old_nodes;                                            \
   }                                                                            \
@@ -192,7 +185,13 @@ do {                                                                           \
 
 #define HASH_MAKE_TABLE(head) do {                                             \
   (head)->n_buckets = HASH_INITIAL_NUM_BUCKETS;                                \
+  (head)->n_occupied = 0;                                                      \
+  (head)->generation = 0;                                                      \
+  HASH_UPPER_BOUND(head);                                                      \
   HASH_ALLOC_NODES((head), (head)->nodes, (head)->n_buckets);                  \
 } while(0)
+
+#define HASH_UPPER_BOUND(head)                                                 \
+  ((head)->upper_bound = ((head)->n_buckets * _HASH_UPPER_BOUND + 0.5))
 
 #endif /* HASH_CLOSED_H_ */

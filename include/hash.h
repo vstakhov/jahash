@@ -820,13 +820,13 @@ typedef struct _hash_filter_data_s {
 		  .hash_init = &_hash_op_##type##_##field##_init_hash,                     \
 		  .hashd = (d)                                                             \
 		};                                                                         \
-    static struct type* _HU_FUNCTION(_hash_op_##type##_##field##_find)(void *head, void *k) \
+    static struct type* _HU_FUNCTION(_hash_op_##type##_##field##_find)(void *_head, const void *k) \
     {                                                                          \
       struct type s, *p;                                                       \
-      HASH_HEAD(, type, field) *h;                                             \
+      HASH_HEAD(, type, field) *_h;                                             \
       memcpy((&s.keyfield), k, sizeof(s.keyfield));                            \
-      DECLTYPE_ASSIGN(h, head);                                                \
-      HASH_FIND_ELT(h, type, field, &s, p);                                    \
+      DECLTYPE_ASSIGN(_h, _head);                                                \
+      HASH_FIND_ELT(_h, type, field, &s, p);                                    \
       return p;                                                                \
     }                                                                          \
     static void _HU_FUNCTION(_hash_op_##type##_##field##_delete_node)(void (*free_func)(struct type *p), struct type *p) { \

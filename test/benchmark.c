@@ -88,6 +88,7 @@ int main(int argc, char **argv)
   if (argc != 5)
     usage();
  
+  srand(time(NULL));
   n = strtol(argv[1], NULL, 0);
   r = strtol(argv[2], NULL, 0);
   k = strtol(argv[3], NULL, 0);
