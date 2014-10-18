@@ -53,7 +53,7 @@ struct name {                                                                  \
 #define HASH_INSERT(head, type, field, elm) do {                               \
   if ((head)->nodes == NULL) HASH_MAKE_TABLE(head);                            \
   HASH_TYPE _hv;                                                               \
-  struct type *_h;                                                             \
+  struct type *_h = (elm);                                                     \
   if ((head)->n_occupied >= (head)->upper_bound) {                             \
     (head)->need_expand = 1;                                                   \
   }                                                                            \
